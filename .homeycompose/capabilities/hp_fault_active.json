@@ -1,0 +1,20 @@
+{
+  "id": "hp_fault_active",
+  "type": "string",
+  "title": {
+    "en": "Active fault description",
+    "nl": "Actieve foutomschrijving",
+    "de": "Aktive Fehlerbeschreibung",
+    "fr": "Description du défaut actif"
+  },
+  "icon": "/assets/fault.svg",
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "description": {
+    "en": "Active fault and protection codes with their description. Empty when no fault is present.",
+    "nl": "Actieve storings- en beveiligingscodes met omschrijving. Leeg als er geen storing is.",
+    "de": "Aktive Störungs- und Schutzcodes mit Beschreibung. Leer, wenn keine Störung vorliegt.",
+    "fr": "Codes de défaut et de protection actifs avec leur description. Vide en l'absence de défaut."
+  }
+}

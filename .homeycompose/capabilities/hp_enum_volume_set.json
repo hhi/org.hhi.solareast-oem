@@ -1,0 +1,24 @@
+{
+  "id": "hp_enum_volume_set",
+  "title": {
+    "en": "Electricity Consumption Checking",
+    "nl": "Stroomverbruik controleren",
+    "de": "Stromverbrauchsprüfung",
+    "fr": "Vérification de la consommation électrique"
+  },
+  "type": "number",
+  "min": 0,
+  "max": 2,
+  "step": 1,
+  "decimals": 0,
+  "getable": true,
+  "setable": true,
+  "uiComponent": "slider",
+
+  "description": {
+    "en": "dp 106: volume_set - Electricity consumption checking setting",
+    "nl": "dp 106: volume_set - Stroomverbruik controle-instelling",
+    "de": "dp 106: volume_set - Einstellung zur Stromverbrauchsüberprüfung",
+    "fr": "dp 106: volume_set - Réglage de vérification de la consommation électrique"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "id": "org.hhi.solareast-oem",
+  "version": "1.0.0",
+  "compatibility": ">=12.3.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "SolarEast OEM Heat Pump",
+    "nl": "SolarEast OEM Warmtepomp",
+    "de": "SolarEast OEM Wärmepumpe",
+    "fr": "Pompe à chaleur SolarEast OEM"
+  },
+  "description": {
+    "en": "Local control of heat pumps built by SolarEast and sold under other brand names (OEM), via Modbus or Wi-Fi (Tuya).",
+    "nl": "Lokale bediening van warmtepompen die SolarEast bouwt en die onder andere merknamen worden verkocht (OEM), via Modbus of wifi (Tuya).",
+    "de": "Lokale Steuerung von Wärmepumpen, die SolarEast baut und die unter anderen Markennamen verkauft werden (OEM), über Modbus oder WLAN (Tuya).",
+    "fr": "Contrôle local des pompes à chaleur fabriquées par SolarEast et vendues sous d'autres marques (OEM), via Modbus ou Wi-Fi (Tuya)."
+  },
+  "category": [
+    "climate"
+  ],
+  "permissions": [],
+  "images": {
+    "small": "/assets/images/WP-hp-newhome-250x175.png",
+    "large": "/assets/images/WP-hp-newhome-500x350.png",
+    "xlarge": "/assets/images/WP-hp-newhome-1000x700.png"
+  },
+  "bugs": {
+    "url": "https://github.com/hhi/org.hhi.solareast-oem/issues"
+  },
+  "source": "https://github.com/hhi/org.hhi.solareast-oem",
+  "tags": {
+    "en": [
+      "heatpump",
+      "solareast",
+      "oem",
+      "bln",
+      "modbus",
+      "tuya"
+    ],
+    "nl": [
+      "warmtepomp",
+      "solareast",
+      "oem",
+      "bln",
+      "modbus",
+      "tuya"
+    ],
+    "de": [
+      "wärmepumpe",
+      "solareast",
+      "oem",
+      "bln",
+      "modbus",
+      "tuya"
+    ],
+    "fr": [
+      "pompe à chaleur",
+      "solareast",
+      "oem",
+      "bln",
+      "modbus",
+      "tuya"
+    ]
+  },
+  "brandColor": "#1d4ed8",
+  "author": "H Hi",
+  "icon": "/assets/icon.svg",
+  "contributors": {
+    "developers": [
+      {
+        "name": "Claude Code AI"
+      }
+    ]
+  }
+}

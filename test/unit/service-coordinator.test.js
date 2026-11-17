@@ -1,0 +1,342 @@
+/**
+ * Lifecycle tests for ServiceCoordinator destroy ordering (ADR-061).
+ */
+
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const Module = require('node:module');
+
+const originalLoad = Module._load;
+Module._load = function load(request, parent, isMain) {
+  if (request === 'homey') return {};
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+const { ServiceCoordinator } = require('../../.homeybuild/lib/modbus/services/service-coordinator');
+const { AdaptiveControlService } = require('../../.homeybuild/lib/modbus/services/adaptive-control-service');
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((res) => { resolve = res; });
+  return { promise, resolve };
+}
+
+async function waitUntil(predicate) {
+  for (let i = 0; i < 10; i++) {
+    if (predicate()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test('ADR-061: ServiceCoordinator.destroy awaits AdaptiveControlService.destroy', async () => {
+  const gate = deferred();
+  const calls = [];
+  const coordinator = Object.create(ServiceCoordinator.prototype);
+  coordinator.logger = () => {};
+  coordinator.device = {
+    homey: {
+      clearTimeout: () => {},
+    },
+    removeListener: () => {},
+  };
+  coordinator.healthCheckInterval = null;
+  coordinator._disconnectStatusTimer = null;
+  coordinator._disconnectDailyResetTimer = null;
+  coordinator._degradedSinceTimer = null;
+  coordinator.serviceHealth = new Map();
+  coordinator.isInitialized = true;
+  coordinator.settingsManager = { destroy: () => calls.push('settings') };
+  coordinator.capabilityHealth = { destroy: () => calls.push('capability') };
+  coordinator.energyTracking = { destroy: () => calls.push('energy') };
+  coordinator.flowCardManager = { destroy: () => calls.push('flowcard') };
+  coordinator.buildingInsights = { destroy: async () => calls.push('insights') };
+  coordinator.adaptiveControl = {
+    saveEnergyOptimizerState: async () => calls.push('energy-state'),
+    destroy: async () => {
+      calls.push('adaptive-start');
+      await gate.promise;
+      calls.push('adaptive-done');
+    },
+  };
+  coordinator.modbusConnection = { destroy: async () => calls.push('modbus') };
+
+  let resolved = false;
+  const destroyPromise = coordinator.destroy().then(() => { resolved = true; });
+  await waitUntil(() => calls.includes('adaptive-start'));
+
+  assert.strictEqual(resolved, false, 'destroy must not resolve before adaptive cleanup resolves');
+  assert.strictEqual(calls.includes('modbus'), false, 'modbus cleanup must wait for adaptive cleanup');
+
+  gate.resolve();
+  await destroyPromise;
+
+  assert.strictEqual(resolved, true);
+  assert.ok(calls.indexOf('adaptive-done') < calls.indexOf('modbus'), 'modbus cleanup runs after adaptive cleanup');
+});
+
+for (const restart of [false, true]) {
+  test(`poll timeout recovers on snapshot ${restart ? 'after app restart' : 'within the same session'}`, () => {
+    let degradedTimeout;
+    const capabilityWrites = [];
+    const unavailableReasons = [];
+    const availableCalls = [];
+    const warningWrites = [];
+    const appliedSnapshots = [];
+    const connectionStates = [];
+    const reconnectReasons = [];
+    const restoreCalls = [];
+    const order = [];
+    const coordinator = Object.create(ServiceCoordinator.prototype);
+
+    coordinator.logger = () => {};
+    coordinator._connectionQuality = 'online';
+    coordinator._visibleConnectionConnected = true;
+    coordinator._degradedSinceTimer = null;
+    coordinator._lastDisconnectCountMs = 0;
+    coordinator._lastSuccessfulFastPollAt = null;
+    coordinator._lastErrorContext = null;
+    coordinator._consecutiveFastPollFailures = 0;
+    coordinator._consecutiveSuperfastPollFailures = 0;
+    coordinator._consecutiveNonFastRequiredFailures = 0;
+    coordinator._structurallyUnsupportedFast = false;
+    coordinator._errorCountByContext = new Map();
+    coordinator._prevDefrosting = false;
+    coordinator.snapshotTrigger = { detect: () => {} };
+    coordinator.capabilityHealth = { updateCapabilityHealth: () => {} };
+    coordinator.energyTracking = {
+      setConnectionState: async (connected) => {
+        connectionStates.push(connected);
+      },
+      updateIntelligentPowerMeasurement: async () => {},
+    };
+    coordinator.adaptiveControl = {
+      onConnectionRestored: () => {
+        restoreCalls.push(true);
+        order.push('restored');
+      },
+    };
+    coordinator.device = {
+      homey: {
+        setTimeout: (fn) => {
+          degradedTimeout = fn;
+          return 'degraded-timeout';
+        },
+        clearTimeout: () => {},
+      },
+      hasCapability: () => true,
+      getCapabilityValue: (capability) => (capability === 'hp_daily_disconnect_count' ? 0 : null),
+      setCapabilityValue: (capability, value) => {
+        capabilityWrites.push([capability, value]);
+        if (capability === 'hp_connection_active' || capability === 'hp_connection_status') {
+          order.push(`cap:${capability}:${value}`);
+        }
+        return Promise.resolve();
+      },
+      setWarning: (warning) => {
+        warningWrites.push(warning);
+        order.push(`warning:${warning}`);
+        return Promise.resolve();
+      },
+      setAvailable: () => {
+        availableCalls.push(true);
+        order.push('available');
+        return Promise.resolve();
+      },
+      setUnavailable: (reason) => {
+        unavailableReasons.push(reason);
+        return Promise.resolve();
+      },
+      applyModbusSnapshot: (snapshot) => {
+        appliedSnapshots.push(snapshot);
+        order.push('snapshot');
+      },
+    };
+    coordinator.modbusConnection = {
+      forceReconnect: async (reason) => {
+        reconnectReasons.push(reason);
+      },
+    };
+
+    coordinator._setConnectionQuality('degraded');
+    assert.strictEqual(typeof degradedTimeout, 'function', 'degraded timer is scheduled');
+
+    degradedTimeout();
+
+    assert.strictEqual(coordinator._connectionQuality, 'offline');
+    assert.deepStrictEqual(
+      capabilityWrites.find(([capability]) => capability === 'hp_connection_active'),
+      ['hp_connection_active', false],
+    );
+    assert.ok(
+      capabilityWrites.some(([capability, value]) => capability === 'hp_connection_status' && String(value).includes('poll timeout')),
+      'connection status includes poll timeout reason',
+    );
+    assert.deepStrictEqual(
+      capabilityWrites.find(([capability]) => capability === 'hp_daily_disconnect_count'),
+      ['hp_daily_disconnect_count', 1],
+    );
+    assert.deepStrictEqual(unavailableReasons, ['Modbus reageert niet op polling']);
+    assert.deepStrictEqual(reconnectReasons, ['poll timeout']);
+
+    if (restart) {
+      // A new coordinator starts with these values, while Homey retains the
+      // previously written Disconnected (poll timeout) capabilities.
+      coordinator._connectionQuality = 'offline';
+      coordinator._visibleConnectionConnected = true;
+      coordinator._disconnectStatusTimer = null;
+      coordinator.serviceHealth = new Map();
+      const writesBeforeConnect = capabilityWrites.length;
+      coordinator._handleConnected();
+      assert.strictEqual(capabilityWrites.length, writesBeforeConnect, 'TCP connect alone must not clear the old status');
+    }
+
+    coordinator._handleModbusData({
+      sourcePollGroup: 'fast',
+      sensors: {
+        outletT7: { value: 30 },
+        inletT6: { value: 27 },
+        ambientT1: { value: 8 },
+      },
+      power: {
+        inputPowerKw: 1.2,
+      },
+      control: {
+        on: true,
+      },
+      status: {
+        defrosting: false,
+        activeFaults: [],
+      },
+    });
+
+    assert.strictEqual(coordinator._connectionQuality, 'online');
+    assert.ok(availableCalls.length >= 1, 'poll recovery must make the Homey device available again');
+    assert.ok(warningWrites.includes(null), 'poll recovery clears the Modbus warning');
+    assert.deepStrictEqual(
+      capabilityWrites.filter(([capability]) => capability === 'hp_connection_active').at(-1),
+      ['hp_connection_active', true],
+    );
+    assert.ok(
+      capabilityWrites.some(([capability, value]) => capability === 'hp_connection_status' && String(value).startsWith('Connected:')),
+      'connection status is restored to Connected',
+    );
+    assert.strictEqual(appliedSnapshots.length, 1, 'snapshot is still forwarded after recovery');
+    assert.deepStrictEqual(connectionStates, [true]);
+    assert.deepStrictEqual(restoreCalls, [true]);
+    assert.ok(order.indexOf('available') !== -1 && order.indexOf('available') < order.indexOf('snapshot'), 'availability is restored before values are applied');
+    assert.ok(order.some((entry) => entry.startsWith('cap:hp_connection_active:true')), 'connection capability is restored before snapshot');
+    assert.ok(
+      order.findIndex((entry) => entry.startsWith('cap:hp_connection_active:true')) < order.indexOf('snapshot'),
+      'connection capability is restored before values are applied',
+    );
+  });
+}
+
+test('TCP reconnect does not mark Homey visibly connected before a valid Modbus snapshot', () => {
+  const capabilityWrites = [];
+  const availableCalls = [];
+  const connectionStates = [];
+  const restoredCalls = [];
+  const coordinator = Object.create(ServiceCoordinator.prototype);
+
+  coordinator.logger = () => {};
+  coordinator._connectionQuality = 'offline';
+  coordinator._visibleConnectionConnected = false;
+  coordinator._disconnectStatusTimer = null;
+  coordinator._consecutiveFastPollFailures = 3;
+  coordinator._consecutiveSuperfastPollFailures = 2;
+  coordinator._consecutiveNonFastRequiredFailures = 1;
+  coordinator._errorCountByContext = new Map([['poll:fast:block:0x0', 1]]);
+  coordinator.serviceHealth = new Map();
+  coordinator.device = {
+    homey: {
+      clearTimeout: () => {},
+    },
+    hasCapability: () => true,
+    setCapabilityValue: (capability, value) => {
+      capabilityWrites.push([capability, value]);
+      return Promise.resolve();
+    },
+    setAvailable: () => {
+      availableCalls.push(true);
+      return Promise.resolve();
+    },
+  };
+  coordinator.energyTracking = {
+    setConnectionState: async (connected) => {
+      connectionStates.push(connected);
+    },
+  };
+  coordinator.adaptiveControl = {
+    onConnectionRestored: () => restoredCalls.push(true),
+  };
+
+  coordinator._handleConnected();
+
+  assert.strictEqual(coordinator._connectionQuality, 'offline');
+  assert.strictEqual(coordinator._visibleConnectionConnected, false);
+  assert.deepStrictEqual(capabilityWrites, []);
+  assert.deepStrictEqual(availableCalls, []);
+  assert.deepStrictEqual(connectionStates, []);
+  assert.deepStrictEqual(restoredCalls, []);
+  assert.strictEqual(coordinator._consecutiveFastPollFailures, 0);
+  assert.strictEqual(coordinator._consecutiveSuperfastPollFailures, 0);
+  assert.strictEqual(coordinator._consecutiveNonFastRequiredFailures, 0);
+  assert.strictEqual(coordinator._errorCountByContext.size, 0);
+});
+
+test('ADR-065: heat pump curve uses the DIY line only while the DIY switch is on and k is negative', () => {
+  const coordinator = Object.create(ServiceCoordinator.prototype);
+  const snapshot = (diy) => ({
+    sensors: { ambientT1: { value: 13 } },
+    diy: { ...diy, calcSetpoint: (t) => diy.slopeK * (t + 15) + diy.interceptB },
+  });
+
+  coordinator._latestSnapshot = snapshot({ active: true, slopeK: -0.5, interceptB: 55 });
+  assert.strictEqual(coordinator._resolveHeatPumpCurve(5), 41);
+
+  coordinator._latestSnapshot = snapshot({ active: false, slopeK: -0.5, interceptB: 55 });
+  assert.strictEqual(coordinator._resolveHeatPumpCurve(5), null);
+
+  coordinator._latestSnapshot = snapshot({ active: true, slopeK: 0, interceptB: 40 });
+  assert.strictEqual(coordinator._resolveHeatPumpCurve(5), null);
+
+  coordinator._diyPolled = true;
+  coordinator._latestSnapshot = { sensors: {}, diy: undefined };
+  assert.strictEqual(coordinator._resolveHeatPumpCurve(5), null, 'DIY registers not supported');
+});
+
+test('ADR-065: heat pump curve is pending until the DIY registers have been read after a start', () => {
+  const coordinator = Object.create(ServiceCoordinator.prototype);
+  coordinator._diyPolled = false;
+  coordinator._latestSnapshot = { sensors: { ambientT1: { value: 12 } }, diy: undefined };
+  assert.strictEqual(coordinator._resolveHeatPumpCurve(5), 'pending');
+
+  // After the medium poll group: the DIY line once read, or null when the registers are not supported
+  coordinator._diyPolled = true;
+  coordinator._latestSnapshot = {
+    sensors: { ambientT1: { value: 12 } },
+    diy: { active: true, slopeK: -0.5, interceptB: 55, calcSetpoint: (t) => -0.5 * (t + 15) + 55 },
+  };
+  assert.strictEqual(coordinator._resolveHeatPumpCurve(5), 41.5);
+});
+
+test('ADR-065: the positional basis waits for a pending heat pump curve instead of falling back', async () => {
+  const settings = { adaptive_curve_source: 'auto', adaptive_curve_at_minus15: 50, adaptive_curve_at_plus15: 35 };
+  const service = Object.create(AdaptiveControlService.prototype);
+  service.device = { getSetting: (key) => settings[key] };
+  service.getEffectiveOutdoorTemp = async () => 12;
+  service.flatBasis = null;
+
+  service.resolveHeatPumpCurve = () => 'pending';
+  assert.strictEqual(await service._resolvePositionalBasis(42), null);
+
+  service.resolveHeatPumpCurve = () => 41.5;
+  assert.deepStrictEqual(await service._resolvePositionalBasis(42), { value: 41.5, source: 'heat_pump_curve' });
+
+  settings.adaptive_curve_source = 'app';
+  service.resolveHeatPumpCurve = () => 'pending';
+  assert.deepStrictEqual(await service._resolvePositionalBasis(42), { value: 36.5, source: 'app_curve' });
+});

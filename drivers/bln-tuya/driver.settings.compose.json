@@ -1,0 +1,2647 @@
+[
+  {
+    "id": "device_id",
+    "type": "text",
+    "label": {
+      "en": "Device ID",
+      "nl": "Apparaat ID",
+      "de": "Geräte-ID",
+      "fr": "ID de l'appareil"
+    },
+    "hint": {
+      "en": "Enter the unique ID of the device.",
+      "nl": "Voer de unieke ID van het apparaat in.",
+      "de": "Geben Sie die eindeutige ID des Geräts ein.",
+      "fr": "Saisissez l'identifiant unique de l'appareil."
+    },
+    "value": ""
+  },
+  {
+    "id": "local_key",
+    "type": "text",
+    "label": {
+      "en": "Local Key",
+      "nl": "Lokale Sleutel",
+      "de": "Lokaler Schlüssel",
+      "fr": "Clé locale"
+    },
+    "hint": {
+      "en": "Enter the local key for secure communication.",
+      "nl": "Voer de lokale sleutel in voor veilige communicatie.",
+      "de": "Geben Sie den lokalen Schlüssel für sichere Kommunikation ein.",
+      "fr": "Saisissez la clé locale pour une communication sécurisée."
+    },
+    "value": ""
+  },
+  {
+    "id": "ip_address",
+    "type": "text",
+    "label": {
+      "en": "Local IP Address",
+      "nl": "Lokaal IP-adres",
+      "de": "Lokale IP-Adresse",
+      "fr": "Adresse IP locale"
+    },
+    "hint": {
+      "en": "Enter only the local IP address of the device. Do not use Public-IP-assigned addresses.",
+      "nl": "Voer alleen het lokale IP-adres van het apparaat in. Gebruik geen publieke IP-adressen.",
+      "de": "Geben Sie nur die lokale IP-Adresse des Geräts ein. Verwenden Sie keine öffentlich zugewiesenen IP-Adressen.",
+      "fr": "Saisissez uniquement l'adresse IP locale de l'appareil. N'utilisez pas d'adresses IP publiques."
+    },
+    "value": ""
+  },
+  {
+    "id": "protocol_version",
+    "type": "dropdown",
+    "label": {
+      "en": "Protocol Version",
+      "nl": "Protocolversie",
+      "de": "Protokollversion",
+      "fr": "Version du protocole"
+    },
+    "hint": {
+      "en": "Tuya protocol version (3.3, 3.4, or 3.5). Default is 3.3. Device will reconnect automatically after changing credentials.",
+      "nl": "Tuya protocolversie (3.3, 3.4 of 3.5). Standaard is 3.3. Apparaat maakt automatisch opnieuw verbinding na wijzigen van inloggegevens.",
+      "de": "Tuya-Protokollversion (3.3, 3.4 oder 3.5). Standard ist 3.3. Das Gerät verbindet sich automatisch neu nach Änderung der Anmeldedaten.",
+      "fr": "Version du protocole Tuya (3.3, 3.4 ou 3.5). La valeur par défaut est 3.3. L'appareil se reconnectera automatiquement après modification des identifiants."
+    },
+    "value": "3.3",
+    "values": [
+      {
+        "id": "3.3",
+        "label": {
+          "en": "3.3 (default)",
+          "nl": "3.3 (standaard)",
+          "de": "3.3 (Standard)",
+          "fr": "3.3 (par défaut)"
+        }
+      },
+      {
+        "id": "3.4",
+        "label": {
+          "en": "3.4",
+          "nl": "3.4",
+          "de": "3.4",
+          "fr": "3.4"
+        }
+      },
+      {
+        "id": "3.5",
+        "label": {
+          "en": "3.5",
+          "nl": "3.5",
+          "de": "3.5",
+          "fr": "3.5"
+        }
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "COP (Coefficient of Performance) Settings",
+      "nl": "COP (Prestatiecoëfficiënt) Instellingen",
+      "de": "COP (Leistungszahl) Einstellungen",
+      "fr": "Paramètres COP (Coefficient de Performance)"
+    },
+    "children": [
+      {
+        "id": "cop_calculation_enabled",
+        "type": "checkbox",
+        "highlight": true,
+        "label": {
+          "en": "Enable COP calculation",
+          "nl": "COP berekening inschakelen",
+          "de": "COP-Berechnung aktivieren",
+          "fr": "Activer le calcul du COP"
+        },
+        "hint": {
+          "en": "Enable automatic COP (efficiency) calculation using available data sources",
+          "nl": "Schakel automatische COP (efficiëntie) berekening in met beschikbare gegevensbronnen",
+          "de": "Aktivieren Sie die automatische COP (Effizienz) Berechnung unter Verwendung verfügbarer Datenquellen",
+          "fr": "Activer le calcul automatique du COP (efficacité) en utilisant les sources de données disponibles"
+        },
+        "value": true
+      },
+      {
+        "id": "cop_calculation_method",
+        "type": "dropdown",
+        "label": {
+          "en": "COP calculation method",
+          "nl": "COP berekenings methode",
+          "de": "COP-Berechnungsmethode",
+          "fr": "Méthode de calcul du COP"
+        },
+        "hint": {
+          "en": "Override calculation method (Auto uses best available data). All 6 methods: Direct thermal (±5%), Power module (±8%), Refrigerant circuit (±12%), Carnot estimation (±15%), Valve correlation (±20%), Temperature difference (±30%)",
+          "nl": "Overschrijf berekenings methode (Auto gebruikt best beschikbare data). Alle 6 methoden: Directe thermisch (±5%), Vermogen module (±8%), Koelmiddel circuit (±12%), Carnot schatting (±15%), Klep correlatie (±20%), Temperatuur verschil (±30%)",
+          "de": "Berechnungsmethode überschreiben (Auto verwendet beste verfügbare Daten). Alle 6 Methoden: Direkt thermisch (±5%), Leistungsmodul (±8%), Kältemittelkreislauf (±12%), Carnot-Schätzung (±15%), Ventilkorrelation (±20%), Temperaturdifferenz (±30%)",
+          "fr": "Remplacer la méthode de calcul (Auto utilise les meilleures données disponibles). Les 6 méthodes : Thermique direct (±5%), Module de puissance (±8%), Circuit frigorifique (±12%), Estimation de Carnot (±15%), Corrélation de vanne (±20%), Différence de température (±30%)"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (best available method)",
+              "nl": "Automatisch (beste beschikbare methode)",
+              "de": "Automatisch (beste verfügbare Methode)",
+              "fr": "Auto (meilleure méthode disponible)"
+            }
+          },
+          {
+            "id": "direct_thermal",
+            "label": {
+              "en": "Direct thermal (±5% - most accurate)",
+              "nl": "Directe thermisch (±5% - meest accuraat)",
+              "de": "Direkt thermisch (±5% - am genauesten)",
+              "fr": "Thermique direct (±5% - plus précis)"
+            }
+          },
+          {
+            "id": "power_module",
+            "label": {
+              "en": "Power module auto-detection (±8%)",
+              "nl": "Vermogen module auto-detectie (±8%)",
+              "de": "Leistungsmodul Autoerkennung (±8%)",
+              "fr": "Détection automatique module de puissance (±8%)"
+            }
+          },
+          {
+            "id": "refrigerant_circuit",
+            "label": {
+              "en": "Refrigerant circuit analysis (±12%)",
+              "nl": "Koelmiddel circuit analyse (±12%)",
+              "de": "Kältemittelkreislauf-Analyse (±12%)",
+              "fr": "Analyse circuit frigorifique (±12%)"
+            }
+          },
+          {
+            "id": "carnot_estimation",
+            "label": {
+              "en": "Carnot estimation (±15%)",
+              "nl": "Carnot schatting (±15%)",
+              "de": "Carnot-Schätzung (±15%)",
+              "fr": "Estimation de Carnot (±15%)"
+            }
+          },
+          {
+            "id": "valve_correlation",
+            "label": {
+              "en": "Valve position correlation (±20%)",
+              "nl": "Klep positie correlatie (±20%)",
+              "de": "Ventilpositionskorrelation (±20%)",
+              "fr": "Corrélation position de vanne (±20%)"
+            }
+          },
+          {
+            "id": "temperature_difference",
+            "label": {
+              "en": "Temperature difference (±30% - basic)",
+              "nl": "Temperatuur verschil (±30% - basis)",
+              "de": "Temperaturdifferenz (±30% - einfach)",
+              "fr": "Différence de température (±30% - basique)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "cop_outlier_detection_enabled",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable COP outlier detection",
+          "nl": "COP outlier detectie inschakelen",
+          "de": "COP-Ausreißererkennung aktivieren",
+          "fr": "Activer la détection des valeurs aberrantes du COP"
+        },
+        "hint": {
+          "en": "Detect and flag unrealistic COP values that may indicate sensor malfunctions",
+          "nl": "Detecteer en markeer onrealistische COP waarden die sensor storingen kunnen aanduiden",
+          "de": "Erkennen und markieren Sie unrealistische COP-Werte, die auf Sensorstörungen hinweisen können",
+          "fr": "Détecter et signaler les valeurs COP irréalistes pouvant indiquer des dysfonctionnements de capteur"
+        },
+        "value": true
+      },
+      {
+        "id": "cop_min_threshold",
+        "type": "number",
+        "label": {
+          "en": "Minimum valid COP",
+          "nl": "Minimale geldige COP",
+          "de": "Minimaler gültiger COP",
+          "fr": "COP minimum valide"
+        },
+        "hint": {
+          "en": "COP values below this threshold will be flagged as outliers",
+          "nl": "COP waarden onder deze drempel worden gemarkeerd als uitschieters",
+          "de": "COP-Werte unter diesem Schwellenwert werden als Ausreißer markiert",
+          "fr": "Les valeurs COP inférieures à ce seuil seront signalées comme aberrantes"
+        },
+        "value": 0.5,
+        "min": 0.1,
+        "max": 2.0,
+        "step": 0.1
+      },
+      {
+        "id": "cop_max_threshold",
+        "type": "number",
+        "label": {
+          "en": "Maximum valid COP",
+          "nl": "Maximale geldige COP",
+          "de": "Maximaler gültiger COP",
+          "fr": "COP maximum valide"
+        },
+        "hint": {
+          "en": "COP values above this threshold will be flagged as outliers",
+          "nl": "COP waarden boven deze drempel worden gemarkeerd als uitschieters",
+          "de": "COP-Werte über diesem Schwellenwert werden als Ausreißer markiert",
+          "fr": "Les valeurs COP supérieures à ce seuil seront signalées comme aberrantes"
+        },
+        "value": 8.0,
+        "min": 4.0,
+        "max": 15.0,
+        "step": 0.5
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Feature Settings (app restart and exit required)",
+      "nl": "Functie Instellingen (herstart en afsluiten van app vereist)",
+      "de": "Funktionseinstellungen (App-Neustart erforderlich)",
+      "fr": "Paramètres des fonctionnalités (redémarrage de l'app requis)"
+    },
+    "children": [
+      {
+        "id": "enable_curve_controls",
+        "type": "checkbox",
+        "label": {
+          "en": "Show curve picker controls in device UI",
+          "nl": "Toon curve instelbediening in apparaat UI",
+          "de": "Kurvensteuerung in Geräte-UI anzeigen",
+          "fr": "Afficher les contrôles de courbe dans l'interface"
+        },
+        "hint": {
+          "en": "Show picker controls for heating and hot water curves in device UI. When disabled, only sensor displays are visible (read-only). Flow cards always work regardless of this setting. Requires app restart to take effect.",
+          "nl": "Toon instelbediening voor verwarmings- en warmwater curves in apparaat UI. Indien uitgeschakeld zijn alleen sensor weergaven zichtbaar (alleen-lezen). Flow kaarten werken altijd ongeacht deze instelling. Vereist app herstart om effect te hebben.",
+          "de": "Zeigen Sie Auswahlsteuerungen für Heizungs- und Warmwasserkurven in der Geräte-UI an. Wenn deaktiviert, sind nur Sensoranzeigen sichtbar (schreibgeschützt). Flow-Karten funktionieren immer unabhängig von dieser Einstellung. Erfordert App-Neustart zur Aktivierung.",
+          "fr": "Afficher les contrôles de sélection pour les courbes de chauffage et d'eau chaude dans l'interface de l'appareil. Lorsque désactivé, seuls les affichages de capteur sont visibles (lecture seule). Les cartes de flux fonctionnent toujours indépendamment de ce paramètre. Nécessite un redémarrage de l'app pour prendre effet."
+        },
+        "value": false
+      },
+      {
+        "id": "enable_power_measurements",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable internal power measurement capabilities",
+          "nl": "Interne vermogingsmeting capabilities inschakelen",
+          "de": "Interne Leistungsmessfunktionen aktivieren",
+          "fr": "Activer les fonctionnalités de mesure de puissance interne"
+        },
+        "hint": {
+          "en": "Show/hide 9 DPS power measurement capabilities (power consumption, voltage, current). Disable for cleaner interface if your device lacks power monitoring. Requires app restart to take effect.",
+          "nl": "Toon/verberg 9 DPS vermogingsmeting capabilities (stroomverbruik, spanning, stroomsterkte). Uitschakelen voor schonere interface als uw apparaat geen vermogingsmonitoring heeft. Vereist app herstart om effect te hebben.",
+          "de": "Zeigen/Verbergen Sie 9 DPS Leistungsmessfunktionen (Stromverbrauch, Spannung, Strom). Deaktivieren Sie für eine übersichtlichere Oberfläche, wenn Ihr Gerät keine Leistungsüberwachung hat. Erfordert App-Neustart zur Aktivierung.",
+          "fr": "Afficher/Masquer 9 DPS capacités de mesure de puissance (consommation, tension, courant). Désactiver pour une interface plus claire si votre appareil n'a pas de surveillance de puissance. Nécessite un redémarrage de l'app pour prendre effet."
+        },
+        "value": false
+      },
+      {
+        "id": "enable_slider_controls",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable slider (water/power) management capabilities",
+          "nl": "Slider (water/power) management capabilities inschakelen",
+          "de": "Schieberegler-Steuerung aktivieren",
+          "fr": "Activer les contrôles curseur"
+        },
+        "hint": {
+          "en": "Show/hide 3 slider control capabilities (hot water temperature, water mode, volume settings). Disable for cleaner interface if you don't need manual control sliders. Requires app restart to take effect.",
+          "nl": "Toon/verberg 3 schuifbalk besturing capabilities (warmwater temperatuur, water modus, volume instellingen). Uitschakelen voor schonere interface als u geen handmatige schuifbalken nodig heeft. Vereist app herstart om effect te hebben.",
+          "de": "Zeigen/Verbergen Sie 3 Schieberegler-Steuerungen (Warmwassertemperatur, Wassermodus, Volumeneinstellungen). Deaktivieren Sie für eine übersichtlichere Oberfläche, wenn Sie keine manuellen Schieberegler benötigen. Erfordert App-Neustart zur Aktivierung.",
+          "fr": "Afficher/Masquer 3 contrôles curseur (température eau chaude, mode eau, réglages volume). Désactiver pour une interface plus claire si vous n'avez pas besoin de curseurs de contrôle manuel. Nécessite un redémarrage de l'app pour prendre effet."
+        },
+        "value": false
+      },
+      {
+        "id": "enable_intelligent_energy_tracking",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable intelligent energy tracking",
+          "nl": "Intelligente energie tracking inschakelen",
+          "de": "Intelligente Energieverfolgung aktivieren",
+          "fr": "Activer le suivi intelligent de l'énergie"
+        },
+        "hint": {
+          "en": "Automatically prioritize external power measurements when available via flow cards, fall back to internal sensors. Makes device appear in Homey Energy dashboard with accurate power consumption data.",
+          "nl": "Prioriteer automatisch externe vermogensmetingen wanneer beschikbaar via flow kaarten, val terug op interne sensoren. Laat apparaat verschijnen in Homey Energie dashboard met nauwkeurige stroomverbruik data.",
+          "de": "Priorisieren Sie automatisch externe Leistungsmessungen, wenn über Flow-Karten verfügbar, greifen Sie auf interne Sensoren zurück. Lässt das Gerät im Homey Energie-Dashboard mit genauen Stromverbrauchsdaten erscheinen.",
+          "fr": "Prioriser automatiquement les mesures de puissance externes lorsqu'elles sont disponibles via les cartes de flux, revenir aux capteurs internes. Fait apparaître l'appareil dans le tableau de bord Homey Énergie avec des données de consommation précises."
+        },
+        "value": true
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Flow Card Controls (restart advised)",
+      "nl": "Flow Kaart Afhandeling Instellingen (herstart en afsluiten van app aanbevolen)",
+      "de": "Flow-Karten-Steuerung (Neustart empfohlen)",
+      "fr": "Contrôles des cartes de flux (redémarrage conseillé)"
+    },
+    "children": [
+      {
+        "id": "flow_temperature_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "Temperature related alerts",
+          "nl": "Temperatuur gerelateerde alarm afhandeling",
+          "de": "Temperaturbezogene Alarme",
+          "fr": "Alertes liées à la température"
+        },
+        "hint": {
+          "en": "Control temperature alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van temperatuur alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von Temperaturalarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte de température"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_voltage_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "Voltage related alerts",
+          "nl": "Spanning gerelateerde alarm afhandeling",
+          "de": "Spannungsbezogene Alarme",
+          "fr": "Alertes liées à la tension"
+        },
+        "hint": {
+          "en": "Control voltage related alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van spanning gerelateerde alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von Spannungsalarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte de tension"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_current_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "Current related alerts",
+          "nl": "Stroom gerelateerde alarm afhandeling",
+          "de": "Strombezogene Alarme",
+          "fr": "Alertes liées au courant"
+        },
+        "hint": {
+          "en": "Control current related alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van stroom gerelateerde alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von Stromalarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte de courant"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_power_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "Power related alerts",
+          "nl": "Vermogen gerelateerde alarm afhandeling",
+          "de": "Leistungsbezogene Alarme",
+          "fr": "Alertes liées à la puissance"
+        },
+        "hint": {
+          "en": "Control power related alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van vermogen gerelateerde alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von Leistungsalarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte de puissance"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_pulse_steps_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "Pulse-steps related alerts",
+          "nl": "Pulse-stappen gerelateerde alarm afhandeling",
+          "de": "Impulsschrittbezogene Alarme",
+          "fr": "Alertes liées aux pas d'impulsion"
+        },
+        "hint": {
+          "en": "Control pulse-steps related alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van pulse-stappen gerelateerde alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von Impulsschritt-Alarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte de pas d'impulsion"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_state_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "State change related alerts",
+          "nl": "Status wijziging gerelateerde alarm afhandeling",
+          "de": "Statusänderungsbezogene Alarme",
+          "fr": "Alertes liées aux changements d'état"
+        },
+        "hint": {
+          "en": "Control state change related alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van status wijziging gerelateerde alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von Statusänderungs-Alarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte de changement d'état"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_efficiency_alerts",
+        "type": "dropdown",
+        "label": {
+          "en": "Efficiency (S)COP related alerts",
+          "nl": "Efficiëntie (S)COP gerelateerde alarm afhandeling",
+          "de": "Effizienz (S)COP-bezogene Alarme",
+          "fr": "Alertes liées à l'efficacité (S)COP"
+        },
+        "hint": {
+          "en": "Control COP and SCOP efficiency alert flow cards visibility",
+          "nl": "Beheers zichtbaarheid van COP en SCOP efficiëntie alarm flow kaarten",
+          "de": "Steuern Sie die Sichtbarkeit von COP- und SCOP-Effizienz-Alarm-Flow-Karten",
+          "fr": "Contrôler la visibilité des cartes de flux d'alerte d'efficacité COP et SCOP"
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "disabled",
+            "label": {
+              "en": "Disabled",
+              "nl": "Uitgeschakeld",
+              "de": "Deaktiviert",
+              "fr": "Désactivé"
+            }
+          },
+          {
+            "id": "auto",
+            "label": {
+              "en": "Auto (based on available sensors)",
+              "nl": "Automatisch (gebaseerd op beschikbare sensoren)",
+              "de": "Automatisch (basierend auf verfügbaren Sensoren)",
+              "fr": "Auto (selon les capteurs disponibles)"
+            }
+          },
+          {
+            "id": "enabled",
+            "label": {
+              "en": "Force enabled",
+              "nl": "Geforceerd ingeschakeld",
+              "de": "Erzwungen aktiviert",
+              "fr": "Forcé activé"
+            }
+          }
+        ]
+      },
+      {
+        "id": "flow_expert_mode",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable HVAC expert feature cards",
+          "nl": "Expert HVAC functie kaarten inschakelen",
+          "de": "HVAC Expertenfunktionskarten aktivieren",
+          "fr": "Activer les cartes de HVAC fonctionnalités d'expert"
+        },
+        "hint": {
+          "en": "Enable diagnostic and system analysis flow cards (compressor/fan motor/water alert flows) for HVAC experts. This setting only affects flow card availability, NOT adaptive control or building model parameters.",
+          "nl": "Schakel diagnose en systeem analyse flow kaarten (compressor/fan motor/water alert flows) in voor HVAC experts. Deze instelling beïnvloedt alleen flow kaarten, NIET adaptieve regeling of gebouwmodel parameters.",
+          "de": "Aktivieren Sie Diagnose- und Systemanalyse-Flow-Karten (Kompressor/Lüftermotor/Wasser Alarm-flows) für HVAC-Experten. Diese Einstellung betrifft nur die Verfügbarkeit von Flow-Karten, NICHT die adaptive Steuerung oder Gebäudemodellparameter.",
+          "fr": "Activer les cartes de flux de diagnostic et d'analyse système (compressor/fan motor/water alert flows) pour les experts HVAC. Ce paramètre affecte uniquement la disponibilité des cartes de flux, PAS le contrôle adaptatif ou les paramètres du modèle de bâtiment."
+        },
+        "value": true
+      },
+      {
+        "id": "show_disconnect_diagnostic",
+        "type": "checkbox",
+        "label": {
+          "en": "Show connection diagnostics",
+          "nl": "Toon verbindingsdiagnostiek",
+          "de": "Verbindungsdiagnose anzeigen",
+          "fr": "Afficher les diagnostics de connexion"
+        },
+        "hint": {
+          "en": "Adds three diagnostic sensors: daily disconnects, daily zombie detections (connection open but silent), and the raw connection telemetry. Only useful for diagnosing connection stability.",
+          "nl": "Voegt drie diagnostische sensoren toe: dagelijkse disconnects, dagelijkse zombie-detecties (verbinding open maar stil) en de ruwe verbindingstelemetrie. Alleen nuttig voor diagnose van verbindingsstabiliteit.",
+          "de": "Fügt drei Diagnosesensoren hinzu: tägliche Verbindungsabbrüche, tägliche Zombie-Erkennungen (Verbindung offen, aber stumm) und die Rohtelemetrie. Nur zur Diagnose der Verbindungsstabilität nützlich.",
+          "fr": "Ajoute trois capteurs de diagnostic : déconnexions quotidiennes, détections de zombies quotidiennes (connexion ouverte mais silencieuse) et la télémétrie brute. Utile uniquement pour diagnostiquer la stabilité de la connexion."
+        },
+        "value": false
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Adaptive control (new sensors, restart app)",
+      "nl": "Adaptieve regeling (nieuwe sensoren, herstart app)",
+      "de": "Adaptive Regelung (neue Sensoren, App neu starten)",
+      "fr": "Contrôle adaptatif (nouveaux capteurs, redémarrer app)"
+    },
+    "children": [
+      {
+        "id": "adaptive_control_enabled",
+        "type": "checkbox",
+        "highlight": true,
+        "label": {
+          "en": "Adaptive control on",
+          "nl": "Adaptieve regeling aan",
+          "de": "Adaptive Regelung ein",
+          "fr": "Contrôle adaptatif activé"
+        },
+        "hint": {
+          "en": "Calculates a recommended water temperature (Simulated Target Temperature) every 5 minutes and starts the card 'Adaptive control recommends temperature adjustment' when the recommendation changes. The app does not change the setpoint itself: only a flow with that card carries out the recommendation. Required: the indoor temperature via the card 'Send indoor temperature to heat pump' and a value for 'Desired Indoor Temperature'; without it, every cycle is skipped. COP, price and wind corrections only work through this recommendation. The building model has its own switch. Default: off.",
+          "nl": "Berekent elke 5 minuten een advies voor de watertemperatuur (Gesimuleerde Doeltemperatuur) en start bij een nieuw advies de kaart 'Adaptieve regeling beveelt temperatuur aanpassing aan'. De app past het setpoint niet zelf aan: alleen een flow met die kaart voert het advies uit. Nodig: de binnentemperatuur via de kaart 'Stuur binnentemperatuur naar warmtepomp' en een waarde bij 'Binnentemperatuur gewenst'; zonder die waarde slaat de regeling elke cyclus over. COP-, prijs- en windcorrectie werken alleen via dit advies. Het gebouwmodel heeft een eigen schakelaar. Standaard: uit.",
+          "de": "Berechnet alle 5 Minuten eine Empfehlung für die Wassertemperatur (Simulierte Zieltemperatur) und startet bei einer neuen Empfehlung die Karte 'Adaptive Regelung empfiehlt Temperaturanpassung'. Die App ändert den Sollwert nicht selbst: Nur ein Flow mit dieser Karte setzt die Empfehlung um. Erforderlich: die Raumtemperatur über die Karte 'Raumtemperatur an Wärmepumpe senden' und ein Wert bei 'Gewünschte Innentemperatur'; ohne diesen Wert wird jeder Zyklus übersprungen. COP-, Preis- und Windkorrektur wirken nur über diese Empfehlung. Das Gebäudemodell hat einen eigenen Schalter. Standard: aus.",
+          "fr": "Calcule toutes les 5 minutes une recommandation de température d'eau (Température Cible Simulée) et déclenche la carte 'Contrôle adaptatif recommande un ajustement de température' à chaque nouvelle recommandation. L'app ne modifie pas elle-même la consigne : seul un flow avec cette carte applique la recommandation. Nécessaire : la température intérieure via la carte 'Envoyer la température intérieure à la pompe à chaleur' et une valeur pour 'Température Intérieure Souhaitée' ; sans elle, chaque cycle est ignoré. Les corrections COP, prix et vent n'agissent qu'à travers cette recommandation. Le modèle du bâtiment a son propre interrupteur. Par défaut : désactivé."
+        },
+        "value": false
+      },
+      {
+        "id": "adaptive_control_mode",
+        "type": "dropdown",
+        "label": {
+          "en": "Control mode",
+          "nl": "Regelmodus",
+          "de": "Regelmodus",
+          "fr": "Mode de régulation"
+        },
+        "hint": {
+          "en": "How the recommendation is calculated. Classic: a small step up or down every 5 minutes; the steps add up. Positional: the recommendation follows a heating curve, corrected for the indoor temperature, and therefore stays calm. Radiators and Floor heating use fixed settings and no coast; Manual uses the groups 'fine-tuning (Positional – Manual)' and 'coast'. Choose Positional when a flow carries out the recommendation and the setpoint drifts or swings with Classic. Tuya: the heat pump only keeps a new setpoint when the heating curve is set to OFF. Default: Classic.",
+          "nl": "Hoe het advies wordt berekend. Klassiek: elke 5 minuten een kleine stap omhoog of omlaag; de stappen tellen op. Positioneel: het advies volgt een stooklijn, met een correctie voor de binnentemperatuur, en blijft daardoor rustig. Radiatoren en Vloerverwarming hebben vaste instellingen en geen coast; Handmatig gebruikt de groepen 'fijnafstelling (Positioneel – Handmatig)' en 'coast'. Kies Positioneel als een flow het advies uitvoert en het setpoint bij Klassiek wegkruipt of slingert. Tuya: de warmtepomp houdt een nieuw setpoint alleen vast als de verwarmingscurve op OFF staat. Standaard: Klassiek.",
+          "de": "Wie die Empfehlung berechnet wird. Klassisch: alle 5 Minuten ein kleiner Schritt nach oben oder unten; die Schritte addieren sich. Positionell: Die Empfehlung folgt einer Heizkurve, korrigiert um die Raumtemperatur, und bleibt dadurch ruhig. Heizkörper und Fußbodenheizung haben feste Einstellungen und kein Coast; Manuell verwendet die Gruppen 'Feineinstellung (Positionell – Manuell)' und 'Coast'. Wählen Sie Positionell, wenn ein Flow die Empfehlung umsetzt und der Sollwert bei Klassisch wegdriftet oder schwankt. Tuya: Die Wärmepumpe hält einen neuen Sollwert nur, wenn die Heizkurve auf OFF steht. Standard: Klassisch.",
+          "fr": "Mode de calcul de la recommandation. Classique : un petit pas vers le haut ou le bas toutes les 5 minutes ; les pas s'additionnent. Positionnel : la recommandation suit une courbe de chauffe, corrigée selon la température intérieure, et reste donc stable. Radiateurs et Plancher chauffant utilisent des réglages fixes, sans coast ; Manuel utilise les groupes 'réglage fin (Positionnel – Manuel)' et 'coast'. Choisissez Positionnel si un flow applique la recommandation et que la consigne dérive ou oscille en Classique. Tuya : la pompe à chaleur ne conserve une nouvelle consigne que si la courbe de chauffe est sur OFF. Par défaut : Classique."
+        },
+        "value": "classic",
+        "values": [
+          {
+            "id": "classic",
+            "label": {
+              "en": "Classic (step by step)",
+              "nl": "Klassiek (stapsgewijs)",
+              "de": "Klassisch (schrittweise)",
+              "fr": "Classique (par paliers)"
+            }
+          },
+          {
+            "id": "positional_radiator",
+            "label": {
+              "en": "Positional – Radiators (experimental)",
+              "nl": "Positioneel – Radiatoren (experimenteel)",
+              "de": "Positionell – Heizkörper (experimentell)",
+              "fr": "Positionnel – Radiateurs (expérimental)"
+            }
+          },
+          {
+            "id": "positional_floor",
+            "label": {
+              "en": "Positional – Floor heating (experimental)",
+              "nl": "Positioneel – Vloerverwarming (experimenteel)",
+              "de": "Positionell – Fußbodenheizung (experimentell)",
+              "fr": "Positionnel – Plancher chauffant (expérimental)"
+            }
+          },
+          {
+            "id": "positional_manual",
+            "label": {
+              "en": "Positional – Manual (experimental)",
+              "nl": "Positioneel – Handmatig (experimenteel)",
+              "de": "Positionell – Manuell (experimentell)",
+              "fr": "Positionnel – Manuel (expérimental)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "adaptive_min_setpoint",
+        "type": "number",
+        "label": {
+          "en": "Lowest water temperature in the recommendation",
+          "nl": "Laagste watertemperatuur in het advies",
+          "de": "Niedrigste Wassertemperatur in der Empfehlung",
+          "fr": "Température d'eau la plus basse recommandée"
+        },
+        "hint": {
+          "en": "The recommendation never goes below this value. Match it to P111 of the heat pump (factory setting 18 °C). Range 15–30 °C. Default: 18 °C.",
+          "nl": "Het advies komt nooit onder deze waarde. Stem af op P111 van de warmtepomp (fabrieksinstelling 18 °C). Bereik 15–30 °C. Standaard: 18 °C.",
+          "de": "Die Empfehlung liegt nie unter diesem Wert. Stimmen Sie ihn auf P111 der Wärmepumpe ab (Werkseinstellung 18 °C). Bereich 15–30 °C. Standard: 18 °C.",
+          "fr": "La recommandation ne descend jamais sous cette valeur. Alignez-la sur P111 de la pompe à chaleur (réglage d'usine 18 °C). Plage 15–30 °C. Par défaut : 18 °C."
+        },
+        "value": 18,
+        "min": 15,
+        "max": 30,
+        "step": 1,
+        "units": "°C"
+      },
+      {
+        "id": "adaptive_max_setpoint",
+        "type": "number",
+        "label": {
+          "en": "Highest water temperature in the recommendation",
+          "nl": "Hoogste watertemperatuur in het advies",
+          "de": "Höchste Wassertemperatur in der Empfehlung",
+          "fr": "Température d'eau la plus haute recommandée"
+        },
+        "hint": {
+          "en": "The recommendation never goes above this value. At least 2 °C above the lowest value. With floor heating: keep 3 °C above the highest value of your heating curve, for cold weather. Range 25–65 °C. Default: 65 °C.",
+          "nl": "Het advies komt nooit boven deze waarde. Minstens 2 °C boven de laagste waarde. Bij vloerverwarming: houd 3 °C ruimte boven de hoogste waarde van uw stooklijn, voor koud weer. Bereik 25–65 °C. Standaard: 65 °C.",
+          "de": "Die Empfehlung liegt nie über diesem Wert. Mindestens 2 °C über dem niedrigsten Wert. Bei Fußbodenheizung: 3 °C Spielraum über dem höchsten Wert Ihrer Heizkurve lassen, für kaltes Wetter. Bereich 25–65 °C. Standard: 65 °C.",
+          "fr": "La recommandation ne dépasse jamais cette valeur. Au moins 2 °C au-dessus de la valeur la plus basse. Avec un plancher chauffant : gardez 3 °C de marge au-dessus de la valeur la plus haute de votre courbe, pour le temps froid. Plage 25–65 °C. Par défaut : 65 °C."
+        },
+        "value": 65,
+        "min": 25,
+        "max": 65,
+        "step": 1,
+        "units": "°C"
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Adaptive control: heating curve (Positional)",
+      "nl": "Adaptieve regeling: stooklijn (Positioneel)",
+      "de": "Adaptive Regelung: Heizkurve (Positionell)",
+      "fr": "Contrôle adaptatif : courbe de chauffe (Positionnel)"
+    },
+    "children": [
+      {
+        "id": "adaptive_curve_fixed",
+        "type": "dropdown",
+        "label": {
+          "en": "Copy once into the app curve",
+          "nl": "Eenmalig overnemen in de app-stooklijn",
+          "de": "Einmalig in die App-Kurve übernehmen",
+          "fr": "Copier une fois dans la courbe de l'app"
+        },
+        "hint": {
+          "en": "Copies a fixed heating curve of the heat pump (H1–H8, L1–L8) once into the two values below. After saving, this list returns to '—'; open the settings again to see the new values. Then set the heat pump's heating curve to OFF.",
+          "nl": "Neemt één keer een vaste verwarmingscurve van de warmtepomp (H1–H8, L1–L8) over in de twee waarden hieronder. Na het opslaan springt deze lijst terug naar '—'; open de instellingen opnieuw om de nieuwe waarden te zien. Zet daarna de verwarmingscurve van de warmtepomp op OFF.",
+          "de": "Übernimmt einmalig eine feste Heizkurve der Wärmepumpe (H1–H8, L1–L8) in die zwei Werte unten. Nach dem Speichern springt diese Liste auf '—' zurück; öffnen Sie die Einstellungen erneut, um die neuen Werte zu sehen. Stellen Sie danach die Heizkurve der Wärmepumpe auf OFF.",
+          "fr": "Copie une seule fois une courbe de chauffe fixe de la pompe à chaleur (H1–H8, L1–L8) dans les deux valeurs ci-dessous. Après l'enregistrement, cette liste revient à '—' ; rouvrez les réglages pour voir les nouvelles valeurs. Réglez ensuite la courbe de chauffe de la pompe sur OFF."
+        },
+        "value": "none",
+        "values": [
+          {
+            "id": "none",
+            "label": {
+              "en": "— (copy nothing)",
+              "nl": "— (niets overnemen)",
+              "de": "— (nichts übernehmen)",
+              "fr": "— (ne rien copier)"
+            }
+          },
+          {
+            "id": "hh1",
+            "label": {
+              "en": "H1",
+              "nl": "H1",
+              "de": "H1",
+              "fr": "H1"
+            }
+          },
+          {
+            "id": "hh2",
+            "label": {
+              "en": "H2",
+              "nl": "H2",
+              "de": "H2",
+              "fr": "H2"
+            }
+          },
+          {
+            "id": "hh3",
+            "label": {
+              "en": "H3",
+              "nl": "H3",
+              "de": "H3",
+              "fr": "H3"
+            }
+          },
+          {
+            "id": "hh4",
+            "label": {
+              "en": "H4",
+              "nl": "H4",
+              "de": "H4",
+              "fr": "H4"
+            }
+          },
+          {
+            "id": "hh5",
+            "label": {
+              "en": "H5",
+              "nl": "H5",
+              "de": "H5",
+              "fr": "H5"
+            }
+          },
+          {
+            "id": "hh6",
+            "label": {
+              "en": "H6",
+              "nl": "H6",
+              "de": "H6",
+              "fr": "H6"
+            }
+          },
+          {
+            "id": "hh7",
+            "label": {
+              "en": "H7",
+              "nl": "H7",
+              "de": "H7",
+              "fr": "H7"
+            }
+          },
+          {
+            "id": "hh8",
+            "label": {
+              "en": "H8",
+              "nl": "H8",
+              "de": "H8",
+              "fr": "H8"
+            }
+          },
+          {
+            "id": "hl1",
+            "label": {
+              "en": "L1",
+              "nl": "L1",
+              "de": "L1",
+              "fr": "L1"
+            }
+          },
+          {
+            "id": "hl2",
+            "label": {
+              "en": "L2",
+              "nl": "L2",
+              "de": "L2",
+              "fr": "L2"
+            }
+          },
+          {
+            "id": "hl3",
+            "label": {
+              "en": "L3",
+              "nl": "L3",
+              "de": "L3",
+              "fr": "L3"
+            }
+          },
+          {
+            "id": "hl4",
+            "label": {
+              "en": "L4",
+              "nl": "L4",
+              "de": "L4",
+              "fr": "L4"
+            }
+          },
+          {
+            "id": "hl5",
+            "label": {
+              "en": "L5",
+              "nl": "L5",
+              "de": "L5",
+              "fr": "L5"
+            }
+          },
+          {
+            "id": "hl6",
+            "label": {
+              "en": "L6",
+              "nl": "L6",
+              "de": "L6",
+              "fr": "L6"
+            }
+          },
+          {
+            "id": "hl7",
+            "label": {
+              "en": "L7",
+              "nl": "L7",
+              "de": "L7",
+              "fr": "L7"
+            }
+          },
+          {
+            "id": "hl8",
+            "label": {
+              "en": "L8",
+              "nl": "L8",
+              "de": "L8",
+              "fr": "L8"
+            }
+          }
+        ]
+      },
+      {
+        "id": "adaptive_curve_at_minus15",
+        "type": "number",
+        "label": {
+          "en": "App curve: water at −15 °C outdoor",
+          "nl": "App-stooklijn: water bij −15 °C buiten",
+          "de": "App-Kurve: Wasser bei −15 °C außen",
+          "fr": "Courbe de l'app : eau à −15 °C extérieur"
+        },
+        "hint": {
+          "en": "The app curve is a straight line through this value and the one at +15 °C. Filled in when you choose Radiators (50) or Floor heating (35), as long as you have not changed the value yourself. Too cold in frost: 1–2 °C higher. Range 20–65 °C. Default: 45 °C.",
+          "nl": "De app-stooklijn is een rechte lijn door deze waarde en die bij +15 °C. Wordt ingevuld bij de keuze Radiatoren (50) of Vloerverwarming (35), zolang u de waarde niet zelf heeft aangepast. Te koud bij vorst: 1–2 °C hoger. Bereik 20–65 °C. Standaard: 45 °C.",
+          "de": "Die App-Kurve ist eine Gerade durch diesen Wert und den bei +15 °C. Wird bei der Wahl Heizkörper (50) oder Fußbodenheizung (35) ausgefüllt, solange Sie den Wert nicht selbst geändert haben. Zu kalt bei Frost: 1–2 °C höher. Bereich 20–65 °C. Standard: 45 °C.",
+          "fr": "La courbe de l'app est une droite passant par cette valeur et celle à +15 °C. Remplie lors du choix Radiateurs (50) ou Plancher chauffant (35), tant que vous n'avez pas modifié la valeur vous-même. Trop froid par gel : 1–2 °C de plus. Plage 20–65 °C. Par défaut : 45 °C."
+        },
+        "value": 45,
+        "min": 20,
+        "max": 65,
+        "step": 1,
+        "units": "°C"
+      },
+      {
+        "id": "adaptive_curve_at_plus15",
+        "type": "number",
+        "label": {
+          "en": "App curve: water at +15 °C outdoor",
+          "nl": "App-stooklijn: water bij +15 °C buiten",
+          "de": "App-Kurve: Wasser bei +15 °C außen",
+          "fr": "Courbe de l'app : eau à +15 °C extérieur"
+        },
+        "hint": {
+          "en": "Filled in when you choose Radiators (35) or Floor heating (27), as long as you have not changed the value yourself. Too cold in mild weather: 1–2 °C higher. Range 15–50 °C. Default: 30 °C.",
+          "nl": "Wordt ingevuld bij de keuze Radiatoren (35) of Vloerverwarming (27), zolang u de waarde niet zelf heeft aangepast. Te koud bij zacht weer: 1–2 °C hoger. Bereik 15–50 °C. Standaard: 30 °C.",
+          "de": "Wird bei der Wahl Heizkörper (35) oder Fußbodenheizung (27) ausgefüllt, solange Sie den Wert nicht selbst geändert haben. Zu kalt bei mildem Wetter: 1–2 °C höher. Bereich 15–50 °C. Standard: 30 °C.",
+          "fr": "Remplie lors du choix Radiateurs (35) ou Plancher chauffant (27), tant que vous n'avez pas modifié la valeur vous-même. Trop froid par temps doux : 1–2 °C de plus. Plage 15–50 °C. Par défaut : 30 °C."
+        },
+        "value": 30,
+        "min": 15,
+        "max": 50,
+        "step": 1,
+        "units": "°C"
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Adaptive control: fine-tuning (Positional – Manual)",
+      "nl": "Adaptieve regeling: fijnafstelling (Positioneel – Handmatig)",
+      "de": "Adaptive Regelung: Feineinstellung (Positionell – Manuell)",
+      "fr": "Contrôle adaptatif : réglage fin (Positionnel – Manuel)"
+    },
+    "children": [
+      {
+        "id": "adaptive_pos_kp",
+        "type": "number",
+        "label": {
+          "en": "Kp: degrees of water per degree indoors (K/K)",
+          "nl": "Kp: graden water per graad binnen (K/K)",
+          "de": "Kp: Grad Wasser pro Grad innen (K/K)",
+          "fr": "Kp : degrés d'eau par degré intérieur (K/K)"
+        },
+        "hint": {
+          "en": "The recommendation rises by this many degrees per degree that it is too cold indoors. Higher reacts faster, but less calmly. Radiators and Floor heating use a fixed 3. Range 1–8. Default: 3.",
+          "nl": "Zoveel graden gaat het advies omhoog per graad dat het binnen te koud is. Hoger reageert sneller, maar onrustiger. Radiatoren en Vloerverwarming gebruiken vast 3. Bereik 1–8. Standaard: 3.",
+          "de": "Um so viele Grad steigt die Empfehlung pro Grad, das es innen zu kalt ist. Höher reagiert schneller, aber unruhiger. Heizkörper und Fußbodenheizung verwenden fest 3. Bereich 1–8. Standard: 3.",
+          "fr": "La recommandation monte d'autant de degrés par degré manquant à l'intérieur. Plus élevé réagit plus vite, mais de façon moins stable. Radiateurs et Plancher chauffant utilisent toujours 3. Plage 1–8. Par défaut : 3."
+        },
+        "value": 3,
+        "min": 1,
+        "max": 8,
+        "step": 0.5
+      },
+      {
+        "id": "adaptive_pos_ti",
+        "type": "number",
+        "label": {
+          "en": "Ti: integration time (hours)",
+          "nl": "Ti: integratietijd (uren)",
+          "de": "Ti: Nachstellzeit (Stunden)",
+          "fr": "Ti : temps d'intégration (heures)"
+        },
+        "hint": {
+          "en": "How fast a persistent indoor deviation is removed; shorter is faster. Radiators use 3 hours, Floor heating 6 hours. Range 1–12. Default: 3.",
+          "nl": "Hoe snel een blijvende afwijking binnen wordt weggewerkt; korter is sneller. Radiatoren gebruiken 3 uur, Vloerverwarming 6 uur. Bereik 1–12. Standaard: 3.",
+          "de": "Wie schnell eine bleibende Abweichung innen ausgeglichen wird; kürzer ist schneller. Heizkörper verwenden 3 Stunden, Fußbodenheizung 6 Stunden. Bereich 1–12. Standard: 3.",
+          "fr": "Vitesse à laquelle un écart intérieur persistant est corrigé ; plus court est plus rapide. Radiateurs utilisent 3 heures, Plancher chauffant 6 heures. Plage 1–12. Par défaut : 3."
+        },
+        "value": 3,
+        "min": 1,
+        "max": 12,
+        "step": 0.5
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Adaptive control: fine-tuning (Classic)",
+      "nl": "Adaptieve regeling: fijnafstelling (Klassiek)",
+      "de": "Adaptive Regelung: Feineinstellung (Klassisch)",
+      "fr": "Contrôle adaptatif : réglage fin (Classique)"
+    },
+    "children": [
+      {
+        "id": "adaptive_pi_kp",
+        "type": "number",
+        "label": {
+          "en": "Kp: proportional gain",
+          "nl": "Kp: proportionele versterking",
+          "de": "Kp: Proportionalverstärkung",
+          "fr": "Kp : gain proportionnel"
+        },
+        "hint": {
+          "en": "How strongly the recommendation reacts to an indoor deviation. Higher reacts faster, with a risk of overshoot. Only change this if you know PI control. Range 0.5–10. Default: 5.0.",
+          "nl": "Hoe sterk het advies reageert op een afwijking binnen. Hoger reageert sneller, met kans op doorschieten. Alleen aanpassen als u PI-regeling kent. Bereik 0,5–10. Standaard: 5,0.",
+          "de": "Wie stark die Empfehlung auf eine Abweichung innen reagiert. Höher reagiert schneller, mit dem Risiko des Überschwingens. Nur ändern, wenn Sie PI-Regelung kennen. Bereich 0,5–10. Standard: 5,0.",
+          "fr": "Intensité de la réaction de la recommandation à un écart intérieur. Plus élevé réagit plus vite, avec un risque de dépassement. À modifier seulement si vous connaissez la régulation PI. Plage 0,5–10. Par défaut : 5,0."
+        },
+        "value": 5.0,
+        "min": 0.5,
+        "max": 10.0,
+        "step": 0.1
+      },
+      {
+        "id": "adaptive_pi_ki",
+        "type": "number",
+        "label": {
+          "en": "Ki: integral gain",
+          "nl": "Ki: integrale versterking",
+          "de": "Ki: Integralverstärkung",
+          "fr": "Ki : gain intégral"
+        },
+        "hint": {
+          "en": "How strongly a persistent indoor deviation is corrected. Only change this if you know PI control. Range 0.1–5. Default: 1.5.",
+          "nl": "Hoe sterk een blijvende afwijking binnen wordt bijgestuurd. Alleen aanpassen als u PI-regeling kent. Bereik 0,1–5. Standaard: 1,5.",
+          "de": "Wie stark eine bleibende Abweichung innen nachgeregelt wird. Nur ändern, wenn Sie PI-Regelung kennen. Bereich 0,1–5. Standard: 1,5.",
+          "fr": "Intensité de la correction d'un écart intérieur persistant. À modifier seulement si vous connaissez la régulation PI. Plage 0,1–5. Par défaut : 1,5."
+        },
+        "value": 1.5,
+        "min": 0.1,
+        "max": 5.0,
+        "step": 0.1
+      },
+      {
+        "id": "adaptive_pi_deadband",
+        "type": "number",
+        "label": {
+          "en": "Deadband (°C)",
+          "nl": "Dode zone (°C)",
+          "de": "Totzone (°C)",
+          "fr": "Zone morte (°C)"
+        },
+        "hint": {
+          "en": "Within this deviation from the desired indoor temperature, the recommendation does not change. Range 0.1–1.0 °C. Default: 0.3 °C.",
+          "nl": "Binnen deze afwijking van de gewenste binnentemperatuur verandert het advies niet. Bereik 0,1–1,0 °C. Standaard: 0,3 °C.",
+          "de": "Innerhalb dieser Abweichung von der gewünschten Raumtemperatur ändert sich die Empfehlung nicht. Bereich 0,1–1,0 °C. Standard: 0,3 °C.",
+          "fr": "Dans cet écart par rapport à la température intérieure souhaitée, la recommandation ne change pas. Plage 0,1–1,0 °C. Par défaut : 0,3 °C."
+        },
+        "value": 0.3,
+        "min": 0.1,
+        "max": 1.0,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Adaptive control: coast (Classic, Positional – Manual)",
+      "nl": "Adaptieve regeling: coast (Klassiek, Positioneel – Handmatig)",
+      "de": "Adaptive Regelung: Coast (Klassisch, Positionell – Manuell)",
+      "fr": "Contrôle adaptatif : coast (Classique, Positionnel – Manuel)"
+    },
+    "children": [
+      {
+        "id": "adaptive_coast_enabled",
+        "type": "checkbox",
+        "label": {
+          "en": "Coast on",
+          "nl": "Coast aan",
+          "de": "Coast ein",
+          "fr": "Coast activé"
+        },
+        "hint": {
+          "en": "When it is too warm indoors, coast sets the recommendation below the current water temperature, so the compressor stays off and the house cools down by itself. Applies to Classic and Positional – Manual; Radiators and Floor heating do not use coast. Default: on.",
+          "nl": "Is het binnen te warm, dan zet coast het advies onder de huidige watertemperatuur, zodat de compressor stil blijft en het huis zelf afkoelt. Telt bij Klassiek en Positioneel – Handmatig; Radiatoren en Vloerverwarming gebruiken geen coast. Standaard: aan.",
+          "de": "Ist es innen zu warm, setzt Coast die Empfehlung unter die aktuelle Wassertemperatur, sodass der Kompressor aus bleibt und das Haus von selbst abkühlt. Gilt für Klassisch und Positionell – Manuell; Heizkörper und Fußbodenheizung verwenden kein Coast. Standard: ein.",
+          "fr": "Lorsqu'il fait trop chaud à l'intérieur, le coast place la recommandation sous la température d'eau actuelle, pour que le compresseur reste arrêté et que la maison se refroidisse d'elle-même. S'applique à Classique et Positionnel – Manuel ; Radiateurs et Plancher chauffant n'utilisent pas le coast. Par défaut : activé."
+        },
+        "value": true
+      },
+      {
+        "id": "adaptive_cooldown_offset",
+        "type": "number",
+        "label": {
+          "en": "Coast: recommendation below the water temperature",
+          "nl": "Coast: advies onder de watertemperatuur",
+          "de": "Coast: Empfehlung unter der Wassertemperatur",
+          "fr": "Coast : recommandation sous la température d'eau"
+        },
+        "hint": {
+          "en": "During coast, the recommendation is this many degrees below the current water temperature. Range 0.5–5 °C. Default: 1 °C.",
+          "nl": "Tijdens coast ligt het advies zoveel graden onder de huidige watertemperatuur. Bereik 0,5–5 °C. Standaard: 1 °C.",
+          "de": "Während Coast liegt die Empfehlung so viele Grad unter der aktuellen Wassertemperatur. Bereich 0,5–5 °C. Standard: 1 °C.",
+          "fr": "Pendant le coast, la recommandation est inférieure d'autant de degrés à la température d'eau actuelle. Plage 0,5–5 °C. Par défaut : 1 °C."
+        },
+        "value": 1,
+        "min": 0.5,
+        "max": 5,
+        "step": 0.5,
+        "units": "°C"
+      },
+      {
+        "id": "adaptive_cooldown_hysteresis",
+        "type": "number",
+        "label": {
+          "en": "Coast: start threshold above desired",
+          "nl": "Coast: startdrempel boven gewenst",
+          "de": "Coast: Startschwelle über der Wunschtemperatur",
+          "fr": "Coast : seuil de démarrage au-dessus du souhaité"
+        },
+        "hint": {
+          "en": "Coast starts when it is this many degrees warmer indoors than desired, two cycles in a row and not falling. Coast stops when the difference drops below half of this, or earlier when the room is cooling and coast has little effect left. Range 0.1–1.0 °C. Default: 0.3 °C.",
+          "nl": "Coast start als het binnen zoveel graden warmer is dan gewenst, twee cycli achter elkaar en niet dalend. Coast stopt als het verschil kleiner wordt dan de helft hiervan, of eerder als de kamer daalt en coast nog maar weinig doet. Bereik 0,1–1,0 °C. Standaard: 0,3 °C.",
+          "de": "Coast startet, wenn es innen so viele Grad wärmer ist als gewünscht, zwei Zyklen nacheinander und nicht fallend. Coast endet, wenn der Unterschied unter die Hälfte dieses Werts fällt, oder früher, wenn der Raum abkühlt und Coast kaum noch wirkt. Bereich 0,1–1,0 °C. Standard: 0,3 °C.",
+          "fr": "Le coast démarre lorsqu'il fait à l'intérieur autant de degrés de plus que souhaité, deux cycles de suite et sans baisse. Il s'arrête lorsque l'écart passe sous la moitié de cette valeur, ou plus tôt si la pièce refroidit et que le coast n'a plus guère d'effet. Plage 0,1–1,0 °C. Par défaut : 0,3 °C."
+        },
+        "value": 0.3,
+        "min": 0.1,
+        "max": 1.0,
+        "step": 0.1,
+        "units": "°C"
+      },
+      {
+        "id": "adaptive_cooldown_strength",
+        "type": "number",
+        "label": {
+          "en": "Coast: share in the recommendation (0.60–0.95)",
+          "nl": "Coast: aandeel in het advies (0,60–0,95)",
+          "de": "Coast: Anteil an der Empfehlung (0,60–0,95)",
+          "fr": "Coast : part dans la recommandation (0,60–0,95)"
+        },
+        "hint": {
+          "en": "How much coast weighs against the other parts of the recommendation. Higher: coast dominates. Default: 0.80.",
+          "nl": "Hoe zwaar coast meeweegt tegen de andere onderdelen van het advies. Hoger: coast overheerst. Standaard: 0,80.",
+          "de": "Wie stark Coast gegenüber den anderen Teilen der Empfehlung gewichtet wird. Höher: Coast überwiegt. Standard: 0,80.",
+          "fr": "Poids du coast face aux autres composantes de la recommandation. Plus élevé : le coast domine. Par défaut : 0,80."
+        },
+        "value": 0.8,
+        "min": 0.6,
+        "max": 0.95,
+        "step": 0.05
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Adaptive control: weighting factors",
+      "nl": "Adaptieve regeling: wegingsfactoren",
+      "de": "Adaptive Regelung: Gewichtungsfaktoren",
+      "fr": "Contrôle adaptatif : facteurs de pondération"
+    },
+    "children": [
+      {
+        "id": "priority_comfort",
+        "type": "number",
+        "label": {
+          "en": "Comfort",
+          "nl": "Comfort",
+          "de": "Komfort",
+          "fr": "Confort"
+        },
+        "hint": {
+          "en": "How much steering on the indoor temperature weighs. Positional always steers on the indoor temperature; there this value sets how much room efficiency and cost get to shift the desired room temperature: a lower value gives them more room. The four values are rescaled to 100% together. Default: 50%.",
+          "nl": "Hoe zwaar het bijsturen op de binnentemperatuur weegt. Positioneel stuurt altijd op de binnentemperatuur; daar bepaalt deze waarde hoeveel ruimte efficiëntie en kosten krijgen om het gewenste kamerdoel te verschuiven: een lagere waarde geeft ze meer ruimte. De vier waarden worden samen naar 100% herrekend. Standaard: 50%.",
+          "de": "Wie stark die Regelung auf die Raumtemperatur gewichtet wird. Positionell regelt immer auf die Raumtemperatur; dort bestimmt dieser Wert, wie viel Spielraum Effizienz und Kosten erhalten, um die gewünschte Raumtemperatur zu verschieben: Ein niedrigerer Wert gibt ihnen mehr Spielraum. Die vier Werte werden zusammen auf 100% umgerechnet. Standard: 50%.",
+          "fr": "Poids de la régulation sur la température intérieure. Le mode Positionnel régule toujours sur la température intérieure ; cette valeur y détermine la marge laissée à l'efficacité et au coût pour décaler la température intérieure visée : une valeur plus basse leur laisse plus de marge. Les quatre valeurs sont ramenées ensemble à 100%. Par défaut : 50%."
+        },
+        "value": 50,
+        "min": 0,
+        "max": 100,
+        "step": 5,
+        "units": {
+          "en": "%",
+          "nl": "%",
+          "de": "%",
+          "fr": "%"
+        }
+      },
+      {
+        "id": "priority_efficiency",
+        "type": "number",
+        "label": {
+          "en": "Efficiency",
+          "nl": "Efficiëntie",
+          "de": "Effizienz",
+          "fr": "Efficacité"
+        },
+        "hint": {
+          "en": "How much a higher COP weighs. With Positional this only shifts the desired room temperature, by at most 1.5 °C together with cost. Default: 15%.",
+          "nl": "Hoe zwaar een hogere COP weegt. Bij Positioneel verschuift dit alleen het gewenste kamerdoel, samen met kosten hooguit 1,5 °C. Standaard: 15%.",
+          "de": "Wie stark ein höherer COP gewichtet wird. Bei Positionell verschiebt dies nur die gewünschte Raumtemperatur, zusammen mit Kosten höchstens 1,5 °C. Standard: 15%.",
+          "fr": "Poids d'un COP plus élevé. En Positionnel, cela décale seulement la température intérieure visée, d'au plus 1,5 °C avec le coût. Par défaut : 15%."
+        },
+        "value": 15,
+        "min": 0,
+        "max": 100,
+        "step": 5,
+        "units": {
+          "en": "%",
+          "nl": "%",
+          "de": "%",
+          "fr": "%"
+        }
+      },
+      {
+        "id": "priority_cost",
+        "type": "number",
+        "label": {
+          "en": "Cost",
+          "nl": "Kosten",
+          "de": "Kosten",
+          "fr": "Coût"
+        },
+        "hint": {
+          "en": "How much a low electricity price weighs. Temporarily heavier at high prices (15% → 45%). With Positional this only shifts the desired room temperature, by at most 1.5 °C together with efficiency. Default: 15%.",
+          "nl": "Hoe zwaar een lage stroomprijs weegt. Bij hoge prijzen tijdelijk zwaarder (15% → 45%). Bij Positioneel verschuift dit alleen het gewenste kamerdoel, samen met efficiëntie hooguit 1,5 °C. Standaard: 15%.",
+          "de": "Wie stark ein niedriger Strompreis gewichtet wird. Bei hohen Preisen vorübergehend stärker (15% → 45%). Bei Positionell verschiebt dies nur die gewünschte Raumtemperatur, zusammen mit Effizienz höchstens 1,5 °C. Standard: 15%.",
+          "fr": "Poids d'un prix d'électricité bas. Temporairement plus fort en cas de prix élevés (15% → 45%). En Positionnel, cela décale seulement la température intérieure visée, d'au plus 1,5 °C avec l'efficacité. Par défaut : 15%."
+        },
+        "value": 15,
+        "min": 0,
+        "max": 100,
+        "step": 5,
+        "units": {
+          "en": "%",
+          "nl": "%",
+          "de": "%",
+          "fr": "%"
+        }
+      },
+      {
+        "id": "priority_thermal",
+        "type": "number",
+        "label": {
+          "en": "Building model — Classic only",
+          "nl": "Gebouwmodel — alleen Klassiek",
+          "de": "Gebäudemodell — nur Klassisch",
+          "fr": "Modèle du bâtiment — Classique uniquement"
+        },
+        "hint": {
+          "en": "How much the building model's prediction weighs. Only counts at a confidence of 50% or more. 0 = off. Range 0–50%. Default: 20%.",
+          "nl": "Hoe zwaar de voorspelling van het gebouwmodel weegt. Telt pas bij een betrouwbaarheid van 50% of meer. 0 = uit. Bereik 0–50%. Standaard: 20%.",
+          "de": "Wie stark die Vorhersage des Gebäudemodells gewichtet wird. Zählt erst ab einer Zuverlässigkeit von 50%. 0 = aus. Bereich 0–50%. Standard: 20%.",
+          "fr": "Poids de la prévision du modèle du bâtiment. Compte seulement à partir d'une fiabilité de 50%. 0 = désactivé. Plage 0–50%. Par défaut : 20%."
+        },
+        "value": 20,
+        "min": 0,
+        "max": 50,
+        "step": 5,
+        "units": {
+          "en": "%",
+          "nl": "%",
+          "de": "%",
+          "fr": "%"
+        }
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Building Model Learning (new sensors, restart app)",
+      "nl": "Gebouwmodel Leren (nieuwe sensoren, herstart app)",
+      "de": "Gebäudemodell-Lernen (neue Sensoren, App neu starten)",
+      "fr": "Apprentissage du Modèle de Bâtiment (nouveaux capteurs, redémarrer app)"
+    },
+    "children": [
+      {
+        "id": "building_model_enabled",
+        "type": "checkbox",
+        "highlight": true,
+        "label": {
+          "en": "Enable building model learning",
+          "nl": "Gebouwmodel leren inschakelen",
+          "de": "Gebäudemodell-Lernen aktivieren",
+          "fr": "Activer l'apprentissage du modèle de bâtiment"
+        },
+        "hint": {
+          "en": "Learn thermal properties of your home (thermal mass, heat loss, solar gain). Enables temperature predictions and improves control accuracy over time.",
+          "nl": "Leer thermische eigenschappen van je woning (thermische massa, warmteverlies, zonnewinst). Maakt temperatuurvoorspellingen mogelijk en verbetert regelnauwkeurigheid in de loop van de tijd.",
+          "de": "Lernen Sie thermische Eigenschaften Ihres Hauses (thermische Masse, Wärmeverlust, Solargewinn). Ermöglicht Temperaturvorhersagen und verbessert die Regelgenauigkeit im Laufe der Zeit.",
+          "fr": "Apprenez les propriétés thermiques de votre maison (masse thermique, perte de chaleur, gain solaire). Permet les prédictions de température et améliore la précision du contrôle au fil du temps."
+        },
+        "value": false
+      },
+      {
+        "id": "building_model_forgetting_factor",
+        "type": "number",
+        "label": {
+          "en": "Learning: Forgetting Factor",
+          "nl": "Leren: Vergeetfactor",
+          "de": "Lernen: Vergissfaktor",
+          "fr": "Apprentissage: Facteur d'Oubli"
+        },
+        "hint": {
+          "en": "⚠️ Advanced: How quickly the model adapts to changes. Higher = more stable, better confidence. DO NOT change unless experiencing specific learning issues. Range 0.9985–0.9995. Default: 0.999. Takes effect immediately; the learned model is kept.",
+          "nl": "⚠️ Geavanceerd: Hoe snel het model zich aanpast aan veranderingen. Hoger = stabieler, betere betrouwbaarheid. PAS NIET AAN tenzij je specifieke leerproblemen hebt. Bereik 0.9985–0.9995. Standaard: 0.999. Werkt direct; het geleerde model blijft behouden.",
+          "de": "⚠️ Erweitert: Wie schnell sich das Modell an Änderungen anpasst. Höher = stabiler, besseres Vertrauen. NICHT ändern, außer bei spezifischen Lernproblemen. Bereich 0.9985–0.9995. Standard: 0.999. Wirkt sofort; das gelernte Modell bleibt erhalten.",
+          "fr": "⚠️ Avancé: Vitesse d'adaptation du modèle aux changements. Plus haut = plus stable, meilleure confiance. NE PAS modifier sauf problèmes d'apprentissage spécifiques. Plage 0.9985–0.9995. Défaut: 0.999. Prend effet immédiatement ; le modèle appris est conservé."
+        },
+        "value": 0.999,
+        "attr": {
+          "min": 0.9985,
+          "max": 0.9995,
+          "step": 0.0005
+        }
+      },
+      {
+        "id": "building_profile",
+        "type": "dropdown",
+        "label": {
+          "en": "Building Type",
+          "nl": "Gebouwtype",
+          "de": "Gebäudetyp",
+          "fr": "Type de Bâtiment"
+        },
+        "hint": {
+          "en": "C = Thermal mass (kWh/°C), UA = Heat loss (kW/°C), τ = Time constant (hours). Select based on construction. Model adapts over time.",
+          "nl": "C = Thermische massa (kWh/°C), UA = Warmteverlies (kW/°C), τ = Tijdconstante (uren). Selecteer op basis van constructie. Model past zich aan.",
+          "de": "C = Wärmespeicher (kWh/°C), UA = Wärmeverlust (kW/°C), τ = Zeitkonstante (Stunden). Wählen nach Konstruktion. Modell passt sich an.",
+          "fr": "C = Masse thermique (kWh/°C), UA = Perte chaleur (kW/°C), τ = Constante temps (heures). Sélectionner selon construction. Modèle s'adapte."
+        },
+        "value": "average",
+        "values": [
+          {
+            "id": "light",
+            "label": {
+              "en": "Light: Wood/prefab, basic insulation, quick temp changes | C=7, UA=0.35, τ=20h",
+              "nl": "Licht: Hout/prefab, basis isolatie, snelle temp wisselingen | C=7, UA=0.35, τ=20h",
+              "de": "Leicht: Holz/Fertig, Basisisolierung, schnelle Temp-Änderungen | C=7, UA=0.35, τ=20h",
+              "fr": "Léger: Bois/préfab, isolation basique, changements temp rapides | C=7, UA=0.35, τ=20h"
+            }
+          },
+          {
+            "id": "average",
+            "label": {
+              "en": "Average: Brick, cavity walls, double glass (typical NL home) | C=15, UA=0.30, τ=50h",
+              "nl": "Gemiddeld: Baksteen, spouwmuur, dubbel glas (typisch NL huis) | C=15, UA=0.30, τ=50h",
+              "de": "Durchschnitt: Ziegel, Hohlwand, Doppelglas (typisches NL-Haus) | C=15, UA=0.30, τ=50h",
+              "fr": "Moyen: Brique, murs creux, double vitrage (maison NL typique) | C=15, UA=0.30, τ=50h"
+            }
+          },
+          {
+            "id": "heavy",
+            "label": {
+              "en": "Heavy: Concrete/stone, good insulation, HR++ glass, stable | C=20, UA=0.25, τ=80h",
+              "nl": "Zwaar: Beton/steen, goede isolatie, HR++ glas, stabiel | C=20, UA=0.25, τ=80h",
+              "de": "Schwer: Beton/Stein, gute Isolierung, HR++-Glas, stabil | C=20, UA=0.25, τ=80h",
+              "fr": "Lourd: Béton/pierre, bonne isolation, verre HR++, stable | C=20, UA=0.25, τ=80h"
+            }
+          },
+          {
+            "id": "passive",
+            "label": {
+              "en": "Passive: Passive house, HR+++ glass, airtight, heat recovery | C=30, UA=0.05, τ=600h",
+              "nl": "Passief: Passief huis, HR+++ glas, luchtdicht, warmte terugwin ventilatie | C=30, UA=0.05, τ=600h",
+              "de": "Passiv: Passiv Haus, HR+++-Glas, luftdicht, Wärmerückgewinnung | C=30, UA=0.05, τ=600h",
+              "fr": "Passif: Maison passive, verre HR+++, étanche, récupération chaleur | C=30, UA=0.05, τ=600h"
+            }
+          }
+        ]
+      },
+      {
+        "id": "building_model_emitter_type",
+        "type": "dropdown",
+        "label": {
+          "en": "Emitter System",
+          "nl": "Afgiftesysteem",
+          "de": "Wärmeabgabesystem",
+          "fr": "Système d'Émission"
+        },
+        "hint": {
+          "en": "Start value for the emitter delay: the time between the heat the heat pump delivers and the heat that reaches the room. Radiators 30 min, floor heating 180 min. Automatic uses the control mode (Positional – Radiators/Floor heating), otherwise the heat pump mode when it tells floor from radiators. The building model then learns the actual delay itself (after about 3 days).",
+          "nl": "Startwaarde voor de afgiftevertraging: de tijd tussen de warmte die de warmtepomp levert en de warmte die de kamer bereikt. Radiatoren 30 min, vloerverwarming 180 min. Automatisch gebruikt de regelmodus (Positioneel – Radiatoren/Vloerverwarming), anders de modus van de warmtepomp als die vloer en radiatoren onderscheidt. Het gebouwmodel leert de werkelijke vertraging daarna zelf (na ongeveer 3 dagen).",
+          "de": "Startwert für die Wärmeabgabe-Verzögerung: die Zeit zwischen der von der Wärmepumpe gelieferten Wärme und der Wärme, die den Raum erreicht. Heizkörper 30 min, Fußbodenheizung 180 min. Automatisch nutzt den Regelmodus (Positionell – Heizkörper/Fußbodenheizung), sonst den Modus der Wärmepumpe, wenn dieser Fußboden und Heizkörper unterscheidet. Das Gebäudemodell lernt die tatsächliche Verzögerung danach selbst (nach etwa 3 Tagen).",
+          "fr": "Valeur initiale du retard d'émission : le temps entre la chaleur fournie par la pompe à chaleur et la chaleur qui atteint la pièce. Radiateurs 30 min, plancher chauffant 180 min. Automatique utilise le mode de régulation (Positionnel – Radiateurs/Plancher chauffant), sinon le mode de la pompe à chaleur s'il distingue plancher et radiateurs. Le modèle du bâtiment apprend ensuite lui-même le retard réel (après environ 3 jours)."
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "auto",
+            "label": {
+              "en": "Automatic",
+              "nl": "Automatisch",
+              "de": "Automatisch",
+              "fr": "Automatique"
+            }
+          },
+          {
+            "id": "radiator",
+            "label": {
+              "en": "Radiators / convectors",
+              "nl": "Radiatoren / convectoren",
+              "de": "Heizkörper / Konvektoren",
+              "fr": "Radiateurs / convecteurs"
+            }
+          },
+          {
+            "id": "floor",
+            "label": {
+              "en": "Floor heating",
+              "nl": "Vloerverwarming",
+              "de": "Fußbodenheizung",
+              "fr": "Plancher chauffant"
+            }
+          }
+        ]
+      },
+      {
+        "id": "building_model_buffer_volume",
+        "type": "number",
+        "label": {
+          "en": "Buffer Tank",
+          "nl": "Buffervat",
+          "de": "Pufferspeicher",
+          "fr": "Ballon Tampon"
+        },
+        "hint": {
+          "en": "Volume of a buffer tank between the heat pump and the emitters, in litres. 0 = no buffer tank. Each litre adds 1 minute to the start value of the emitter delay. The building model then learns the actual delay itself.",
+          "nl": "Inhoud van een buffervat tussen de warmtepomp en de afgifte, in liter. 0 = geen buffervat. Elke liter telt 1 minuut op bij de startwaarde van de afgiftevertraging. Het gebouwmodel leert de werkelijke vertraging daarna zelf.",
+          "de": "Inhalt eines Pufferspeichers zwischen Wärmepumpe und Wärmeabgabe, in Litern. 0 = kein Pufferspeicher. Jeder Liter addiert 1 Minute zum Startwert der Wärmeabgabe-Verzögerung. Das Gebäudemodell lernt die tatsächliche Verzögerung danach selbst.",
+          "fr": "Volume d'un ballon tampon entre la pompe à chaleur et les émetteurs, en litres. 0 = pas de ballon tampon. Chaque litre ajoute 1 minute à la valeur initiale du retard d'émission. Le modèle du bâtiment apprend ensuite lui-même le retard réel."
+        },
+        "value": 0,
+        "units": {
+          "en": "L",
+          "nl": "L",
+          "de": "L",
+          "fr": "L"
+        },
+        "attr": {
+          "min": 0,
+          "max": 2000,
+          "step": 10
+        }
+      },
+      {
+        "id": "reset_building_model",
+        "type": "checkbox",
+        "label": {
+          "en": "Reset building model learning",
+          "nl": "Reset gebouwmodel leren",
+          "de": "Gebäudemodell-Lernen zurücksetzen",
+          "fr": "Réinitialiser l'apprentissage du modèle de bâtiment"
+        },
+        "hint": {
+          "en": "Enable to reset all learned building parameters (C, UA, τ, g, P_int) and restart learning from scratch using the selected building profile. Automatically disables after reset. Use when diagnostics show corrupt state (negative values, 0% confidence with many samples).",
+          "nl": "Schakel in om alle geleerde gebouwparameters (C, UA, τ, g, P_int) te resetten en opnieuw te beginnen met het geselecteerde gebouwprofiel. Schakelt automatisch uit na reset. Gebruik wanneer diagnostics corrupte state tonen (negatieve waarden, 0% confidence met veel samples).",
+          "de": "Aktivieren zum Zurücksetzen aller gelernten Gebäudeparameter (C, UA, τ, g, P_int) und Neustart des Lernens mit ausgewähltem Gebäudeprofil. Deaktiviert sich automatisch nach Reset. Verwenden wenn Diagnose korrupten Zustand zeigt (negative Werte, 0% Konfidenz mit vielen Samples).",
+          "fr": "Activer pour réinitialiser tous paramètres bâtiment appris (C, UA, τ, g, P_int) et redémarrer apprentissage avec profil sélectionné. Se désactive automatiquement après reset. Utiliser quand diagnostic montre état corrompu (valeurs négatives, 0% confiance avec nombreux échantillons)."
+        },
+        "value": false
+      },
+      {
+        "id": "enable_dynamic_pint",
+        "type": "checkbox",
+        "label": {
+          "en": "Dynamic internal gains",
+          "nl": "Dynamische interne warmtewinsten",
+          "de": "Dynamische interne Gewinne",
+          "fr": "Gains internes dynamiques"
+        },
+        "hint": {
+          "en": "Accounts for heat from people, cooking, appliances varying by time. Night (23-06h): 40% (sleeping), Day (06-18h): 100% (normal), Evening (18-23h): 180% (cooking, TV). Improves prediction accuracy ~10-15%. Takes effect after 'Reset building model learning'.",
+          "nl": "Houdt rekening met warmte van mensen, koken, apparaten per tijdstip. Nacht (23-06u): 40% (slapen), Dag (06-18u): 100% (normaal), Avond (18-23u): 180% (koken, TV). Verbetert voorspelling ~10-15%. Werkt pas na 'Reset gebouwmodel leren'.",
+          "de": "Berücksichtigt Wärme von Menschen, Kochen, Geräten je nach Zeit. Nacht (23-06h): 40% (schlafen), Tag (06-18h): 100% (normal), Abend (18-23h): 180% (kochen, TV). Verbessert Vorhersage ~10-15%. Wirkt erst nach 'Gebäudemodell-Lernen zurücksetzen'.",
+          "fr": "Tient compte chaleur des personnes, cuisine, appareils selon heure. Nuit (23-06h): 40% (sommeil), Jour (06-18h): 100% (normal), Soir (18-23h): 180% (cuisine, TV). Améliore prévision ~10-15%. Prend effet après 'Réinitialiser l'apprentissage du modèle de bâtiment'."
+        },
+        "value": true
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Building Insights & Recommendations (new sensors, restart app)",
+      "nl": "Gebouw Inzichten & Aanbevelingen (nieuwe sensoren, herstart app)",
+      "de": "Gebäudeerkenntnisse & Empfehlungen (neue Sensoren, App neu starten)",
+      "fr": "Aperçus & Recommandations du Bâtiment (nouveaux capteurs, redémarrer app)"
+    },
+    "children": [
+      {
+        "id": "building_insights_enabled",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable Building Insights",
+          "nl": "Gebouw Inzichten Inschakelen",
+          "de": "Gebäudeerkenntnisse Aktivieren",
+          "fr": "Activer les Aperçus du Bâtiment"
+        },
+        "hint": {
+          "en": "Analyze building thermal model and provide energy-saving recommendations with ROI estimates. Insights appear after 24-48 hours of learning. ⚠️ Requires: Building Model Learning must be enabled.",
+          "nl": "Analyseer thermisch gebouwmodel en geef energie-besparende aanbevelingen met ROI schattingen. Inzichten verschijnen na 24-48 uur leren. ⚠️ Vereist: Gebouwmodel Leren moet ingeschakeld zijn.",
+          "de": "Analysieren Sie das thermische Gebäudemodell und geben Sie Energiespartipps mit ROI-Schätzungen. Erkenntnisse erscheinen nach 24-48 Stunden Lernen. ⚠️ Voraussetzung: Gebäudemodell-Lernen muss aktiviert sein.",
+          "fr": "Analysez le modèle thermique du bâtiment et fournissez des recommandations d'économie d'énergie avec des estimations de ROI. Les aperçus apparaissent après 24-48 heures d'apprentissage. ⚠️ Prérequis: L'apprentissage du modèle de bâtiment doit être activé."
+        },
+        "value": false
+      },
+      {
+        "id": "insights_min_confidence",
+        "type": "number",
+        "label": {
+          "en": "Minimum Confidence ",
+          "nl": "Minimale Betrouwbaarheid ",
+          "de": "Mindestvertrauen ",
+          "fr": "Confiance Minimale "
+        },
+        "hint": {
+          "en": "Only show insights when building model confidence exceeds this threshold. 70% = ~24-48 hours learning. Lower values show earlier insights with less accuracy.",
+          "nl": "Toon alleen inzichten wanneer gebouwmodel betrouwbaarheid deze drempel overschrijdt. 70% = ~24-48 uur leren. Lagere waarden tonen eerdere inzichten met minder nauwkeurigheid.",
+          "de": "Zeigen Sie nur Erkenntnisse an, wenn das Gebäudemodellvertrauen diesen Schwellenwert überschreitet. 70% = ~24-48 Stunden Lernen. Niedrigere Werte zeigen frühere Erkenntnisse mit geringerer Genauigkeit.",
+          "fr": "Afficher uniquement les aperçus lorsque la confiance du modèle du bâtiment dépasse ce seuil. 70% = ~24-48 heures d'apprentissage. Des valeurs plus faibles montrent des aperçus plus tôt avec moins de précision."
+        },
+        "value": 70,
+        "min": 50,
+        "max": 90,
+        "step": 5,
+        "units": "%"
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Weather Forecast (new sensors, restart app)",
+      "nl": "Weerprognose (nieuwe sensoren, herstart app)",
+      "de": "Wettervorhersage (neue Sensoren, App neu starten)",
+      "fr": "Prévision Météo (nouveaux capteurs, redémarrer app)"
+    },
+    "children": [
+      {
+        "id": "enable_weather_forecast",
+        "type": "checkbox",
+        "highlight": true,
+        "label": {
+          "en": "Enable weather forecast, besides the regular data ingestion",
+          "nl": "Weerprognose inschakelen naast de reguliere gegevensinvoer",
+          "de": "Wettervorhersage aktivieren neben der regulären Datenerfassung",
+          "fr": "Activer la prévision météo, en plus de l'ingestion de données régulière"
+        },
+        "hint": {
+          "en": "Show weather forecast sensors (forecast advice, optimal delay, COP correction). Open-Meteo data is fetched in the background as fallback for wind, temperature and solar radiation. Requires: Adaptive Control must be enabled. Free API, no account needed.",
+          "nl": "Toon weerprognose sensoren (prognose advies, optimale vertraging, COP correctie). Open-Meteo data wordt op de achtergrond opgehaald als fallback voor wind, temperatuur en zonnestraling. Vereist: Adaptieve Regeling moet ingeschakeld zijn. Gratis API, geen account nodig.",
+          "de": "Wettervorhersage-Sensoren anzeigen (Prognoseberatung, optimale Verzögerung, COP-Korrektur). Open-Meteo-Daten werden im Hintergrund als Fallback für Wind, Temperatur und Solarstrahlung abgerufen. Voraussetzung: Adaptive Steuerung muss aktiviert sein. Kostenlose API, kein Konto erforderlich.",
+          "fr": "Afficher les capteurs de prévision météo (conseil de prévision, délai optimal, correction COP). Les données Open-Meteo sont récupérées en arrière-plan comme solution de repli pour le vent, la température et le rayonnement solaire. Prérequis: La régulation adaptative doit être activée. API gratuite, aucun compte requis."
+        },
+        "value": false
+      },
+      {
+        "id": "forecast_location_lat",
+        "type": "number",
+        "label": {
+          "en": "Location: Latitude",
+          "nl": "Locatie: Breedtegraad",
+          "de": "Standort: Breitengrad",
+          "fr": "Localisation: Latitude"
+        },
+        "hint": {
+          "en": "Latitude coordinate for weather forecast (e.g., Amsterdam = 52.37). Find your coordinates at maps.google.com. As long as the default location (Amsterdam) is set, adaptive control uses the heat pump's own outdoor sensor instead of the forecast.",
+          "nl": "Breedtegraad coördinaat voor weerprognose (bijv. Amsterdam = 52.37). Vind je coördinaten op maps.google.com. Zolang de standaardlocatie (Amsterdam) is ingesteld, gebruikt de adaptieve regeling de buitensensor van de warmtepomp in plaats van de prognose.",
+          "de": "Breitengrad für Wettervorhersage (z.B. Amsterdam = 52.37). Finden Sie Ihre Koordinaten auf maps.google.com. Solange der Standardort (Amsterdam) eingestellt ist, verwendet die adaptive Steuerung den Außenfühler der Wärmepumpe statt der Vorhersage.",
+          "fr": "Latitude pour la prévision météo (ex. Amsterdam = 52.37). Trouvez vos coordonnées sur maps.google.com. Tant que l'emplacement par défaut (Amsterdam) est défini, la régulation adaptative utilise la sonde extérieure de la pompe à chaleur au lieu de la prévision."
+        },
+        "value": 52.37,
+        "min": -90,
+        "max": 90,
+        "step": 0.01
+      },
+      {
+        "id": "forecast_location_lon",
+        "type": "number",
+        "label": {
+          "en": "Location: Longitude",
+          "nl": "Locatie: Lengtegraad",
+          "de": "Standort: Längengrad",
+          "fr": "Localisation: Longitude"
+        },
+        "hint": {
+          "en": "Longitude coordinate for weather forecast (e.g., Amsterdam = 4.90). Find your coordinates at maps.google.com.",
+          "nl": "Lengtegraad coördinaat voor weerprognose (bijv. Amsterdam = 4.90). Vind je coördinaten op maps.google.com.",
+          "de": "Längengrad für Wettervorhersage (z.B. Amsterdam = 4.90). Finden Sie Ihre Koordinaten auf maps.google.com.",
+          "fr": "Longitude pour la prévision météo (ex. Amsterdam = 4.90). Trouvez vos coordonnées sur maps.google.com."
+        },
+        "value": 4.9,
+        "min": -180,
+        "max": 180,
+        "step": 0.01
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Energy Price Optimization (new sensors, restart app)",
+      "nl": "Energieprijs Optimalisatie (nieuwe sensoren, herstart app)",
+      "de": "Energiepreis-Optimierung (neue Sensoren, App neu starten)",
+      "fr": "Optimisation du Prix de l'Énergie (nouveaux capteurs, redémarrer app)"
+    },
+    "children": [
+      {
+        "id": "price_optimizer_enabled",
+        "type": "checkbox",
+        "highlight": true,
+        "label": {
+          "en": "Enable price optimization",
+          "nl": "Prijsoptimalisatie inschakelen",
+          "de": "Preisoptimierung aktivieren",
+          "fr": "Activer l'optimisation des prix"
+        },
+        "hint": {
+          "en": "Optimize heating based on day-ahead energy prices (received via the flow card 'Send energy prices to heat pump'). Pre-heats during low-price periods, reduces during high-price periods. Requires dynamic energy contract. Estimated savings: €400-600/year. ⚠️ Requires: 'Adaptive control on' (group 'Adaptive control').",
+          "nl": "Optimaliseer verwarming op basis van day-ahead energieprijzen (ontvangen via de flowkaart 'Stuur energieprijzen naar warmtepomp'). Voorverwarmt tijdens lage-prijs periodes, vermindert tijdens hoge-prijs periodes. Vereist dynamisch energiecontract. Geschatte besparing: €400-600/jaar. ⚠️ Vereist: 'Adaptieve regeling aan' (groep 'Adaptieve regeling').",
+          "de": "Optimieren Sie die Heizung basierend auf Day-Ahead-Energiepreisen (empfangen über die Flow-Karte 'Energiepreise an Wärmepumpe senden'). Vorheizen während niedriger Preisperioden, Reduzierung während hoher Preisperioden. Erfordert dynamischen Energievertrag. Geschätzte Einsparungen: €400-600/Jahr. ⚠️ Voraussetzung: 'Adaptive Regelung ein' (Gruppe 'Adaptive Regelung').",
+          "fr": "Optimisez le chauffage en fonction des prix de l'énergie day-ahead (reçus via la carte de flux 'Envoyer les prix de l'énergie à la pompe à chaleur'). Préchauffe pendant les périodes à bas prix, réduit pendant les périodes à prix élevés. Nécessite un contrat d'énergie dynamique. Économies estimées: €400-600/an. ⚠️ Prérequis : 'Contrôle adaptatif activé' (groupe 'Contrôle adaptatif')."
+        },
+        "value": false
+      },
+      {
+        "id": "price_calculation_mode",
+        "type": "dropdown",
+        "label": {
+          "en": "Price calculation mode",
+          "nl": "Prijsberekening modus",
+          "de": "Preisberechnungsmodus",
+          "fr": "Mode de calcul du prix"
+        },
+        "hint": {
+          "en": "Market: spot price + VAT only. Market+: adds supplier fee. All-in: adds energy tax (complete cost).",
+          "nl": "Marktprijs: spotprijs + BTW. Marktprijs+: incl. leveranciersopslag. All-in: incl. energiebelasting (complete kosten).",
+          "de": "Markt: Spotpreis + MwSt. Markt+: plus Lieferantengebühr. All-in: plus Energiesteuer (Gesamtkosten).",
+          "fr": "Marché: prix spot + TVA. Marché+: ajoute frais fournisseur. All-in: ajoute taxe énergie (coût complet)."
+        },
+        "value": "all_in",
+        "values": [
+          {
+            "id": "market",
+            "label": {
+              "en": "Market price (spot + VAT)",
+              "nl": "Marktprijs (spot + BTW)",
+              "de": "Marktpreis (Spot + MwSt)",
+              "fr": "Prix du marché (spot + TVA)"
+            }
+          },
+          {
+            "id": "market_plus",
+            "label": {
+              "en": "Market+ (spot + fee + VAT)",
+              "nl": "Marktprijs+ (spot + opslag + BTW)",
+              "de": "Markt+ (Spot + Gebühr + MwSt)",
+              "fr": "Marché+ (spot + frais + TVA)"
+            }
+          },
+          {
+            "id": "all_in",
+            "label": {
+              "en": "All-in price (complete cost)",
+              "nl": "All-in prijs (complete kosten)",
+              "de": "All-in Preis (Gesamtkosten)",
+              "fr": "Prix all-in (coût complet)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "supplier_fee_inc_vat",
+        "type": "number",
+        "label": {
+          "en": "Supplier fee (€/kWh incl. VAT)",
+          "nl": "Inkoopvergoeding (€/kWh incl. BTW)",
+          "de": "Lieferantengebühr (€/kWh inkl. MwSt)",
+          "fr": "Frais fournisseur (€/kWh TTC)"
+        },
+        "hint": {
+          "en": "Supplier/trading fee per kWh, including VAT. Check your energy contract for this value.",
+          "nl": "Leveranciersopslag per kWh, inclusief BTW. Controleer uw energiecontract voor deze waarde.De huidige waarde hier is die van Frank Energie",
+          "de": "Lieferantengebühr pro kWh, inklusive MwSt. Überprüfen Sie Ihren Energievertrag auf diesen Wert.",
+          "fr": "Frais de fournisseur/négoce par kWh, TTC. Vérifiez votre contrat d'énergie pour cette valeur."
+        },
+        "value": 0.0182,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.0001
+      },
+      {
+        "id": "electricity_tax_inc_vat",
+        "type": "number",
+        "label": {
+          "en": "Energy tax (€/kWh incl. VAT)",
+          "nl": "Energiebelasting (€/kWh incl. BTW)",
+          "de": "Energiesteuer (€/kWh inkl. MwSt)",
+          "fr": "Taxe énergie (€/kWh TTC)"
+        },
+        "hint": {
+          "en": "Energy tax per kWh, including VAT. Netherlands 2024: ~€0.11085. Check your invoice for current rate.",
+          "nl": "Energiebelasting per kWh, inclusief BTW. Nederland 2024: ~€0.11085. Controleer uw factuur voor actueel tarief.",
+          "de": "Energiesteuer pro kWh, inklusive MwSt. Niederlande 2024: ~€0.11085. Überprüfen Sie Ihre Rechnung für aktuelle Rate.",
+          "fr": "Taxe sur l'énergie par kWh, TTC. Pays-Bas 2024: ~€0.11085. Vérifiez votre facture pour le taux actuel."
+        },
+        "value": 0.11085,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.0001
+      },
+      {
+        "id": "vat_percentage",
+        "type": "number",
+        "label": {
+          "en": "VAT percentage (%)",
+          "nl": "BTW-percentage (%)",
+          "de": "MwSt-Prozentsatz (%)",
+          "fr": "Pourcentage TVA (%)"
+        },
+        "hint": {
+          "en": "VAT percentage applied to market price. Netherlands: 21% (standard), 9% (reduced rate for some situations).",
+          "nl": "BTW-percentage toegepast op marktprijs. Nederland: 21% (standaard), 9% (verlaagd tarief voor sommige situaties).",
+          "de": "MwSt-Prozentsatz auf Marktpreis. Niederlande: 21% (Standard), 9% (ermäßigter Satz für einige Situationen).",
+          "fr": "Pourcentage de TVA appliqué au prix du marché. Pays-Bas: 21% (standard), 9% (taux réduit pour certaines situations)."
+        },
+        "value": 21,
+        "min": 0,
+        "max": 30,
+        "step": 1
+      },
+      {
+        "id": "price_threshold_mode",
+        "type": "dropdown",
+        "label": {
+          "en": "Price thresholds",
+          "nl": "Prijsdrempels",
+          "de": "Preisschwellen",
+          "fr": "Seuils de prix"
+        },
+        "hint": {
+          "en": "Automatic: of the hours from 12 hours back to 12 hours ahead, the cheapest 10% count as 'very low', the next 20% as 'low', the most expensive 10% as 'very high' and the 20% below that as 'high'. With fewer than 12 known prices the fixed amounts apply; with less than €0.03/kWh difference every hour counts as 'normal'. Fixed: the four amounts below.",
+          "nl": "Automatisch: van de uren van 12 uur terug tot 12 uur vooruit gelden de goedkoopste 10% als 'zeer laag', de volgende 20% als 'laag', de duurste 10% als 'zeer hoog' en de 20% daaronder als 'hoog'. Met minder dan 12 bekende prijzen gelden de vaste bedragen; bij minder dan €0,03/kWh verschil geldt elk uur als 'normaal'. Vast: de vier bedragen hieronder.",
+          "de": "Automatisch: Von den Stunden 12 Stunden zurück bis 12 Stunden voraus gelten die günstigsten 10% als 'sehr niedrig', die nächsten 20% als 'niedrig', die teuersten 10% als 'sehr hoch' und die 20% darunter als 'hoch'. Mit weniger als 12 bekannten Preisen gelten die festen Beträge; bei weniger als €0,03/kWh Unterschied gilt jede Stunde als 'normal'. Fest: die vier Beträge unten.",
+          "fr": "Automatique : parmi les heures de 12 heures avant à 12 heures après, les 10% les moins chères comptent comme 'très bas', les 20% suivantes comme 'bas', les 10% les plus chères comme 'très élevé' et les 20% en dessous comme 'élevé'. Avec moins de 12 prix connus, les montants fixes s'appliquent ; avec moins de €0,03/kWh d'écart, chaque heure compte comme 'normal'. Fixe : les quatre montants ci-dessous."
+        },
+        "value": "auto",
+        "values": [
+          {
+            "id": "auto",
+            "label": {
+              "en": "Automatic (relative to surrounding hours)",
+              "nl": "Automatisch (ten opzichte van de uren eromheen)",
+              "de": "Automatisch (relativ zu den umliegenden Stunden)",
+              "fr": "Automatique (par rapport aux heures voisines)"
+            }
+          },
+          {
+            "id": "fixed",
+            "label": {
+              "en": "Fixed (amounts below)",
+              "nl": "Vast (bedragen hieronder)",
+              "de": "Fest (Beträge unten)",
+              "fr": "Fixe (montants ci-dessous)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "price_threshold_very_low",
+        "type": "number",
+        "label": {
+          "en": "Very Low Price Threshold ",
+          "nl": "Zeer Lage Prijs Drempel ",
+          "de": "Sehr Niedriger Preisschwellenwert ",
+          "fr": "Seuil de Prix Très Bas "
+        },
+        "hint": {
+          "en": "Maximum price considered 'very low' for maximum pre-heating (+1.5°C). Market price excl. VAT and fees, only used with 'Fixed'. Default: €0.04/kWh",
+          "nl": "Maximum prijs beschouwd als 'zeer laag' voor maximaal voorverwarmen (+1.5°C). Marktprijs zonder btw en opslagen, alleen gebruikt bij 'Vast'. Standaard: €0.04/kWh",
+          "de": "Maximaler Preis als 'sehr niedrig' für maximales Vorheizen (+1.5°C). Marktpreis ohne MwSt. und Aufschläge, nur bei 'Fest' verwendet. Standard: €0.04/kWh",
+          "fr": "Prix maximum considéré comme 'très bas' pour préchauffage maximum (+1.5°C). Prix du marché hors TVA et frais, utilisé uniquement avec 'Fixe'. Défaut: €0.04/kWh"
+        },
+        "value": 0.04,
+        "min": -0.1,
+        "max": 0.3,
+        "step": 0.01,
+        "units": {
+          "en": "€/kWh",
+          "nl": "€/kWh",
+          "de": "€/kWh",
+          "fr": "€/kWh"
+        }
+      },
+      {
+        "id": "price_threshold_low",
+        "type": "number",
+        "label": {
+          "en": "Low Price Threshold ",
+          "nl": "Lage Prijs Drempel ",
+          "de": "Niedriger Preisschwellenwert ",
+          "fr": "Seuil de Prix Bas "
+        },
+        "hint": {
+          "en": "Maximum price considered 'low' for moderate pre-heating (+0.75°C). Market price excl. VAT and fees, only used with 'Fixed'. Default: €0.06/kWh",
+          "nl": "Maximum prijs beschouwd als 'laag' voor matig voorverwarmen (+0.75°C). Marktprijs zonder btw en opslagen, alleen gebruikt bij 'Vast'. Standaard: €0.06/kWh",
+          "de": "Maximaler Preis als 'niedrig' für mäßiges Vorheizen (+0.75°C). Marktpreis ohne MwSt. und Aufschläge, nur bei 'Fest' verwendet. Standard: €0.06/kWh",
+          "fr": "Prix maximum considéré comme 'bas' pour préchauffage modéré (+0.75°C). Prix du marché hors TVA et frais, utilisé uniquement avec 'Fixe'. Défaut: €0.06/kWh"
+        },
+        "value": 0.06,
+        "min": -0.05,
+        "max": 0.3,
+        "step": 0.01,
+        "units": {
+          "en": "€/kWh",
+          "nl": "€/kWh",
+          "de": "€/kWh",
+          "fr": "€/kWh"
+        }
+      },
+      {
+        "id": "price_threshold_normal",
+        "type": "number",
+        "label": {
+          "en": "Normal Price Threshold ",
+          "nl": "Normale Prijs Drempel ",
+          "de": "Normaler Preisschwellenwert ",
+          "fr": "Seuil de Prix Normal "
+        },
+        "hint": {
+          "en": "Maximum price considered 'normal' for maintaining temperature (0°C adjustment). Market price excl. VAT and fees, only used with 'Fixed'. Default: €0.10/kWh",
+          "nl": "Maximum prijs beschouwd als 'normaal' voor temperatuur handhaven (0°C aanpassing). Marktprijs zonder btw en opslagen, alleen gebruikt bij 'Vast'. Standaard: €0.10/kWh",
+          "de": "Maximaler Preis als 'normal' für Temperaturerhaltung (0°C Anpassung). Marktpreis ohne MwSt. und Aufschläge, nur bei 'Fest' verwendet. Standard: €0.10/kWh",
+          "fr": "Prix maximum considéré comme 'normal' pour maintenir la température (ajustement 0°C). Prix du marché hors TVA et frais, utilisé uniquement avec 'Fixe'. Défaut: €0.10/kWh"
+        },
+        "value": 0.1,
+        "min": 0.0,
+        "max": 0.3,
+        "step": 0.01,
+        "units": {
+          "en": "€/kWh",
+          "nl": "€/kWh",
+          "de": "€/kWh",
+          "fr": "€/kWh"
+        }
+      },
+      {
+        "id": "price_threshold_high",
+        "type": "number",
+        "label": {
+          "en": "High Price Threshold ",
+          "nl": "Hoge Prijs Drempel ",
+          "de": "Hoher Preisschwellenwert ",
+          "fr": "Seuil de Prix Élevé "
+        },
+        "hint": {
+          "en": "Maximum price considered 'high' before 'very high' reduction (-1.0°C). Market price excl. VAT and fees, only used with 'Fixed'. Default: €0.12/kWh",
+          "nl": "Maximum prijs beschouwd als 'hoog' voor 'zeer hoog' reductie (-1.0°C). Marktprijs zonder btw en opslagen, alleen gebruikt bij 'Vast'. Standaard: €0.12/kWh",
+          "de": "Maximaler Preis als 'hoch' vor 'sehr hoch' Reduzierung (-1.0°C). Marktpreis ohne MwSt. und Aufschläge, nur bei 'Fest' verwendet. Standard: €0.12/kWh",
+          "fr": "Prix maximum considéré comme 'élevé' avant réduction 'très élevé' (-1.0°C). Prix du marché hors TVA et frais, utilisé uniquement avec 'Fixe'. Défaut: €0.12/kWh"
+        },
+        "value": 0.12,
+        "min": 0.0,
+        "max": 0.5,
+        "step": 0.01,
+        "units": {
+          "en": "€/kWh",
+          "nl": "€/kWh",
+          "de": "€/kWh",
+          "fr": "€/kWh"
+        }
+      },
+      {
+        "id": "price_max_preheat_offset",
+        "type": "number",
+        "label": {
+          "en": "Max Pre-heat Offset ",
+          "nl": "Max Voorverwarmen Offset ",
+          "de": "Maximale Vorheiz-Offset ",
+          "fr": "Offset de Préchauffage Max "
+        },
+        "hint": {
+          "en": "Maximum temperature increase during very low price periods. Default: 1.5°C",
+          "nl": "Maximale temperatuurverhoging tijdens zeer lage prijs periodes. Standaard: 1.5°C",
+          "de": "Maximale Temperaturerhöhung während sehr niedriger Preisperioden. Standard: 1.5°C",
+          "fr": "Augmentation maximale de température pendant les périodes de prix très bas. Défaut: 1.5°C"
+        },
+        "value": 1.5,
+        "min": 0.0,
+        "max": 3.0,
+        "step": 0.5,
+        "units": {
+          "en": "°C",
+          "nl": "°C",
+          "de": "°C",
+          "fr": "°C"
+        }
+      },
+      {
+        "id": "daily_cost_threshold",
+        "type": "number",
+        "label": {
+          "en": "Daily Cost Alert Threshold ",
+          "nl": "Dagelijkse Kosten Waarschuwings Drempel ",
+          "de": "Tägliche Kosten-Warnschwelle ",
+          "fr": "Seuil d'Alerte de Coût Quotidien "
+        },
+        "hint": {
+          "en": "Trigger flow card when daily energy cost exceeds this amount. Used for budget monitoring. Default: €10",
+          "nl": "Activeer flow card wanneer dagelijkse energiekosten dit bedrag overschrijden. Gebruikt voor budgetbewaking. Standaard: €10",
+          "de": "Flow-Karte auslösen, wenn die täglichen Energiekosten diesen Betrag überschreiten. Für Budgetüberwachung. Standard: €10",
+          "fr": "Déclencher la carte flow lorsque le coût énergétique quotidien dépasse ce montant. Utilisé pour la surveillance du budget. Défaut: €10"
+        },
+        "value": 10,
+        "min": 1,
+        "max": 50,
+        "step": 0.5,
+        "units": {
+          "en": "€",
+          "nl": "€",
+          "de": "€",
+          "fr": "€"
+        }
+      },
+      {
+        "id": "adaptive_price_block_hours",
+        "type": "number",
+        "label": {
+          "en": "Price Block Size ",
+          "nl": "Prijsblok Grootte ",
+          "de": "Preisblock-Größe ",
+          "fr": "Taille du Bloc de Prix "
+        },
+        "hint": {
+          "en": "Size of cheapest/expensive blocks for day-ahead planning. Used by 'cheapest block started' trigger and block detection. Default: 4 hours",
+          "nl": "Grootte van goedkoopste/duurste blokken voor dag-vooruit planning. Gebruikt door 'goedkoopste blok gestart' trigger en blok detectie. Standaard: 4 uren",
+          "de": "Größe der günstigsten/teuersten Blöcke für Day-Ahead-Planung. Verwendet von 'günstigster Block gestartet' Trigger und Block-Erkennung. Standard: 4 Stunden",
+          "fr": "Taille des blocs les moins chers/coûteux pour la planification day-ahead. Utilisé par le déclencheur 'bloc le moins cher commencé' et la détection de blocs. Défaut: 4 heures"
+        },
+        "value": 4,
+        "min": 1,
+        "max": 12,
+        "step": 1,
+        "units": {
+          "en": "h",
+          "nl": "u",
+          "de": "Std",
+          "fr": "h"
+        }
+      },
+      {
+        "id": "adaptive_price_warning_hours",
+        "type": "number",
+        "label": {
+          "en": "Expensive Block Warning Time ",
+          "nl": "Duur Blok Waarschuwingstijd ",
+          "de": "Teurer Block Warnzeit ",
+          "fr": "Temps d'Avertissement Bloc Coûteux "
+        },
+        "hint": {
+          "en": "Trigger 'expensive period approaching' flow N hours before expensive block starts. Use to pre-heat building. Default: 2 hours",
+          "nl": "Activeer 'dure periode nadert' flow N uur voor duur blok begint. Gebruik om gebouw voor te verwarmen. Standaard: 2 uren",
+          "de": "Löst 'teure Periode naht' Flow N Stunden vor Start des teuren Blocks aus. Zum Vorheizen des Gebäudes verwenden. Standard: 2 Stunden",
+          "fr": "Déclenche le flow 'période coûteuse approche' N heures avant le début du bloc coûteux. Utilisez pour préchauffer le bâtiment. Défaut: 2 heures"
+        },
+        "value": 2,
+        "min": 1,
+        "max": 4,
+        "step": 1,
+        "units": {
+          "en": "h",
+          "nl": "u",
+          "de": "Std",
+          "fr": "h"
+        }
+      },
+      {
+        "id": "adaptive_price_trend_hours",
+        "type": "number",
+        "label": {
+          "en": "Price Trend Analysis Window ",
+          "nl": "Prijstrend Analyse Venster ",
+          "de": "Preistrend-Analysefenster ",
+          "fr": "Fenêtre d'Analyse Tendance Prix "
+        },
+        "hint": {
+          "en": "Number of future hours to analyze for price trend detection (rising/falling/stable). Used by 'price trend changed' trigger. Default: 6 hours",
+          "nl": "Aantal toekomstige uren om te analyseren voor prijstrend detectie (stijgend/dalend/stabiel). Gebruikt door 'prijstrend veranderd' trigger. Standaard: 6 uren",
+          "de": "Anzahl zukünftiger Stunden für Preistrend-Erkennung (steigend/fallend/stabil). Verwendet von 'Preistrend geändert' Trigger. Standard: 6 Stunden",
+          "fr": "Nombre d'heures futures à analyser pour la détection de tendance de prix (en hausse/baisse/stable). Utilisé par le déclencheur 'tendance prix changée'. Défaut: 6 heures"
+        },
+        "value": 6,
+        "min": 3,
+        "max": 24,
+        "step": 1,
+        "units": {
+          "en": "h",
+          "nl": "u",
+          "de": "Std",
+          "fr": "h"
+        }
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "COP Optimization",
+      "nl": "COP Optimalisatie",
+      "de": "COP-Optimierung",
+      "fr": "Optimisation COP"
+    },
+    "children": [
+      {
+        "id": "cop_optimizer_enabled",
+        "type": "checkbox",
+        "highlight": true,
+        "label": {
+          "en": "Enable COP optimization",
+          "nl": "COP optimalisatie inschakelen",
+          "de": "COP-Optimierung aktivieren",
+          "fr": "Activer l'optimisation COP"
+        },
+        "hint": {
+          "en": "Optimize supply temperature for maximum efficiency based on historical COP data. Learns optimal settings for each outdoor temperature. Estimated savings: €200-300/year. ⚠️ Requires: COP Calculation must be enabled.",
+          "nl": "Optimaliseer aanvoertemperatuur voor maximale efficiëntie op basis van historische COP data. Leert optimale instellingen voor elke buitentemperatuur. Geschatte besparing: €200-300/jaar. ⚠️ Vereist: COP Berekening moet ingeschakeld zijn.",
+          "de": "Optimieren Sie die Vorlauftemperatur für maximale Effizienz basierend auf historischen COP-Daten. Lernt optimale Einstellungen für jede Außentemperatur. Geschätzte Einsparungen: €200-300/Jahr. ⚠️ Voraussetzung: COP-Berechnung muss aktiviert sein.",
+          "fr": "Optimisez la température d'alimentation pour une efficacité maximale basée sur les données COP historiques. Apprend les paramètres optimaux pour chaque température extérieure. Économies estimées: €200-300/an. ⚠️ Prérequis: Le calcul COP doit être activé."
+        },
+        "value": false
+      },
+      {
+        "id": "cop_min_acceptable",
+        "type": "number",
+        "label": {
+          "en": "Minimum Acceptable COP",
+          "nl": "Minimaal Acceptabele COP",
+          "de": "Minimal Akzeptabler COP",
+          "fr": "COP Minimum Acceptable"
+        },
+        "hint": {
+          "en": "Trigger optimization when COP drops below this value. Default: 2.5",
+          "nl": "Start optimalisatie wanneer COP onder deze waarde komt. Standaard: 2.5",
+          "de": "Optimierung starten, wenn COP unter diesen Wert fällt. Standard: 2.5",
+          "fr": "Déclencher l'optimisation lorsque le COP descend en dessous de cette valeur. Défaut: 2.5"
+        },
+        "value": 2.5,
+        "min": 1.5,
+        "max": 4.0,
+        "step": 0.1
+      },
+      {
+        "id": "cop_target",
+        "type": "number",
+        "label": {
+          "en": "Target COP",
+          "nl": "Doel COP",
+          "de": "Ziel-COP",
+          "fr": "COP Cible"
+        },
+        "hint": {
+          "en": "Target efficiency to aim for. System will try to improve COP toward this value. Default: 3.5",
+          "nl": "Doel efficiëntie om naar te streven. Systeem probeert COP naar deze waarde te verbeteren. Standaard: 3.5",
+          "de": "Zieleffizienz anzustreben. System versucht COP auf diesen Wert zu verbessern. Standard: 3.5",
+          "fr": "Efficacité cible à viser. Le système essaiera d'améliorer le COP vers cette valeur. Défaut: 3.5"
+        },
+        "value": 3.5,
+        "min": 2.0,
+        "max": 5.0,
+        "step": 0.1
+      },
+      {
+        "id": "cop_strategy",
+        "type": "dropdown",
+        "label": {
+          "en": "Optimization Strategy",
+          "nl": "Optimalisatie Strategie",
+          "de": "Optimierungsstrategie",
+          "fr": "Stratégie d'Optimisation"
+        },
+        "hint": {
+          "en": "How aggressively to optimize. Conservative = slow safe adjustments, Balanced = moderate (recommended), Aggressive = fast experimental adjustments.",
+          "nl": "Hoe agressief te optimaliseren. Conservatief = langzame veilige aanpassingen, Gebalanceerd = matig (aanbevolen), Agressief = snelle experimentele aanpassingen.",
+          "de": "Wie aggressiv zu optimieren. Konservativ = langsame sichere Anpassungen, Ausgewogen = moderat (empfohlen), Aggressiv = schnelle experimentelle Anpassungen.",
+          "fr": "Comment optimiser de manière agressive. Conservateur = ajustements lents et sûrs, Équilibré = modéré (recommandé), Agressif = ajustements rapides expérimentaux."
+        },
+        "value": "balanced",
+        "values": [
+          {
+            "id": "conservative",
+            "label": {
+              "en": "Conservative (slow, safe)",
+              "nl": "Conservatief (langzaam, veilig)",
+              "de": "Konservativ (langsam, sicher)",
+              "fr": "Conservateur (lent, sûr)"
+            }
+          },
+          {
+            "id": "balanced",
+            "label": {
+              "en": "Balanced (recommended)",
+              "nl": "Gebalanceerd (aanbevolen)",
+              "de": "Ausgewogen (empfohlen)",
+              "fr": "Équilibré (recommandé)"
+            }
+          },
+          {
+            "id": "aggressive",
+            "label": {
+              "en": "Aggressive (fast, experimental)",
+              "nl": "Agressief (snel, experimenteel)",
+              "de": "Aggressiv (schnell, experimentell)",
+              "fr": "Agressif (rapide, expérimental)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Wind Correction",
+      "nl": "Wind Correctie",
+      "de": "Windkorrektur",
+      "fr": "Correction du vent"
+    },
+    "children": [
+      {
+        "id": "wind_correction_enabled",
+        "type": "checkbox",
+        "label": {
+          "en": "Enable wind correction",
+          "nl": "Wind correctie inschakelen",
+          "de": "Windkorrektur aktivieren",
+          "fr": "Activer la correction du vent"
+        },
+        "hint": {
+          "en": "Adjusts target temperature based on wind speed to compensate for increased heat loss.",
+          "nl": "Past streeftemperatuur aan op basis van windsnelheid om verhoogd warmteverlies te compenseren.",
+          "de": "Passt die Zieltemperatur basierend auf der Windgeschwindigkeit an, um erhöhten Wärmeverlust zu kompensieren.",
+          "fr": "Ajuste la température cible en fonction de la vitesse du vent pour compenser l'augmentation des pertes de chaleur."
+        },
+        "value": false
+      },
+      {
+        "id": "wind_max_correction",
+        "type": "number",
+        "label": {
+          "en": "Maximum temperature correction (°C)",
+          "nl": "Maximale temperatuur correctie (°C)",
+          "de": "Maximale Temperaturkorrektur (°C)",
+          "fr": "Correction de température maximale (°C)"
+        },
+        "hint": {
+          "en": "Maximum target temperature increase due to wind. Prevents excessive corrections during storms.",
+          "nl": "Maximale streeftemperatuur verhoging door wind. Voorkomt overmatige correcties tijdens storm.",
+          "de": "Maximale Zieltemperaturerhöhung durch Wind. Verhindert übermäßige Korrekturen bei Sturm.",
+          "fr": "Augmentation maximale de la température cible due au vent. Empêche les corrections excessives pendant les tempêtes."
+        },
+        "value": 3.0,
+        "min": 0.5,
+        "max": 5.0,
+        "step": 0.5
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Solar Radiation Source",
+      "nl": "Zonnestraling Bron",
+      "de": "Sonnenstrahlungsquelle",
+      "fr": "Source de rayonnement solaire"
+    },
+    "children": [
+      {
+        "id": "solar_panel_wp",
+        "type": "number",
+        "label": {
+          "en": "Solar panel system size (Wp)",
+          "nl": "Zonnepaneel systeem grootte (Wp)",
+          "de": "Solarmodulsystemgröße (Wp)",
+          "fr": "Taille du système solaire (Wp)"
+        },
+        "hint": {
+          "en": "Total peak power of your solar panel system in Wp. E.g., 6000 for a 6 kWp system.",
+          "nl": "Totaal piekvermogen van uw zonnepaneelsysteem in Wp. Bijv. 6000 voor een 6 kWp systeem.",
+          "de": "Gesamte Spitzenleistung Ihres Solarmodulsystems in Wp. Z.B. 6000 für ein 6 kWp System.",
+          "fr": "Puissance crête totale de votre système solaire en Wp. Ex: 6000 pour un système de 6 kWp."
+        },
+        "value": 0,
+        "min": 0,
+        "max": 50000,
+        "step": 10
+      },
+      {
+        "id": "solar_panel_efficiency",
+        "type": "number",
+        "label": {
+          "en": "Solar panel efficiency factor",
+          "nl": "Zonnepaneel efficiëntie factor",
+          "de": "Solarmodule Effizienzfaktor",
+          "fr": "Facteur d'efficacité des panneaux solaires"
+        },
+        "hint": {
+          "en": "Real-world efficiency compared to STC conditions. Default 0.85 accounts for temperature, shading, and inverter losses.",
+          "nl": "Werkelijke efficiëntie vergeleken met STC-condities. Standaard 0.85 houdt rekening met temperatuur, schaduw en omvormerverliezen.",
+          "de": "Reale Effizienz im Vergleich zu STC-Bedingungen. Standard 0,85 berücksichtigt Temperatur, Beschattung und Wechselrichterverluste.",
+          "fr": "Efficacité réelle par rapport aux conditions STC. La valeur par défaut de 0,85 tient compte de la température, de l'ombrage et des pertes de l'onduleur."
+        },
+        "value": 0.85,
+        "min": 0.5,
+        "max": 1.0,
+        "step": 0.01
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Diagnostics",
+      "nl": "Diagnostiek",
+      "de": "Diagnose",
+      "fr": "Diagnostics"
+    },
+    "children": [
+      {
+        "id": "force_reconnect",
+        "type": "checkbox",
+        "label": {
+          "en": "Force reconnect to device",
+          "nl": "Forceer herverbinding met apparaat",
+          "de": "Erzwungene Neuverbindung zum Gerät",
+          "fr": "Forcer la reconnexion à l'appareil"
+        },
+        "hint": {
+          "en": "Click to immediately reconnect to the Tuya device. Use this when the device shows 'Disconnected' status. Bypasses automatic reconnection delays and resets error recovery state.",
+          "nl": "Klik om direct opnieuw verbinding te maken met het Tuya apparaat. Gebruik dit wanneer het apparaat 'Disconnected' status toont. Omzeilt automatische herverbindings vertragingen en reset fout herstel status.",
+          "de": "Klicken Sie, um sofort eine Neuverbindung zum Tuya-Gerät herzustellen. Verwenden Sie dies, wenn das Gerät den Status 'Getrennt' anzeigt. Umgeht automatische Neuverbindungsverzögerungen und setzt den Fehlerwiederherstellungsstatus zurück.",
+          "fr": "Cliquez pour reconnecter immédiatement à l'appareil Tuya. Utilisez ceci lorsque l'appareil affiche le statut 'Déconnecté'. Contourne les délais de reconnexion automatique et réinitialise l'état de récupération d'erreur."
+        },
+        "value": false
+      },
+      {
+        "id": "capability_diagnostics",
+        "type": "checkbox",
+        "label": {
+          "en": "Generate capability diagnostics report",
+          "nl": "Genereer capability diagnostiek rapport",
+          "de": "Diagnose-Bericht für Funktionen erstellen",
+          "fr": "Générer un rapport de diagnostic des capacités"
+        },
+        "hint": {
+          "en": "Click to generate a detailed report showing which capabilities are working and which have null values",
+          "nl": "Klik om een gedetailleerd rapport te genereren dat toont welke capabilities werken en welke null waarden hebben",
+          "de": "Klicken Sie, um einen detaillierten Bericht zu erstellen, der zeigt, welche Funktionen funktionieren und welche Nullwerte haben",
+          "fr": "Cliquez pour générer un rapport détaillé montrant quelles capacités fonctionnent et lesquelles ont des valeurs nulles"
+        },
+        "value": false
+      },
+      {
+        "id": "log_level",
+        "type": "dropdown",
+        "label": {
+          "en": "Log Level",
+          "nl": "Log Niveau",
+          "de": "Log-Level",
+          "fr": "Niveau de Journal"
+        },
+        "hint": {
+          "en": "Control logging verbosity. ERROR: Only critical failures (recommended for production). WARN: Errors + warnings. INFO: Errors + warnings + important events. DEBUG: All logs (for troubleshooting).",
+          "nl": "Beheer logging verbositeit. ERROR: Alleen kritieke fouten (aanbevolen voor productie). WARN: Fouten + waarschuwingen. INFO: Fouten + waarschuwingen + belangrijke gebeurtenissen. DEBUG: Alle logs (voor probleemoplossing).",
+          "de": "Logging-Detailstufe steuern. ERROR: Nur kritische Fehler (für Produktion empfohlen). WARN: Fehler + Warnungen. INFO: Fehler + Warnungen + wichtige Ereignisse. DEBUG: Alle Logs (für Fehlerbehebung).",
+          "fr": "Contrôler la verbosité des journaux. ERROR: Seulement les échecs critiques (recommandé pour la production). WARN: Erreurs + avertissements. INFO: Erreurs + avertissements + événements importants. DEBUG: Tous les journaux (pour le dépannage)."
+        },
+        "value": "error",
+        "values": [
+          {
+            "id": "error",
+            "label": {
+              "en": "ERROR - Only critical failures (recommended)",
+              "nl": "ERROR - Alleen kritieke fouten (aanbevolen)",
+              "de": "ERROR - Nur kritische Fehler (empfohlen)",
+              "fr": "ERROR - Seulement échecs critiques (recommandé)"
+            }
+          },
+          {
+            "id": "warn",
+            "label": {
+              "en": "WARN - Errors + Warnings",
+              "nl": "WARN - Fouten + Waarschuwingen",
+              "de": "WARN - Fehler + Warnungen",
+              "fr": "WARN - Erreurs + Avertissements"
+            }
+          },
+          {
+            "id": "info",
+            "label": {
+              "en": "INFO - Errors + Warnings + Important events",
+              "nl": "INFO - Fouten + Waarschuwingen + Belangrijke gebeurtenissen",
+              "de": "INFO - Fehler + Warnungen + Wichtige Ereignisse",
+              "fr": "INFO - Erreurs + Avertissements + Événements importants"
+            }
+          },
+          {
+            "id": "debug",
+            "label": {
+              "en": "DEBUG - All logs (troubleshooting)",
+              "nl": "DEBUG - Alle logs (probleemoplossing)",
+              "de": "DEBUG - Alle Logs (Fehlerbehebung)",
+              "fr": "DEBUG - Tous les journaux (dépannage)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Energy Management",
+      "nl": "Energie Beheer",
+      "de": "Energieverwaltung",
+      "fr": "Gestion de l'énergie"
+    },
+    "children": [
+      {
+        "id": "reset_external_energy_total",
+        "type": "checkbox",
+        "label": {
+          "en": "Reset external energy total counter",
+          "nl": "Reset externe energie totaal teller",
+          "de": "Externe Gesamtenergiezähler zurücksetzen",
+          "fr": "Réinitialiser le compteur d'énergie totale externe"
+        },
+        "hint": {
+          "en": "Click to reset the external energy total counter to zero. This will clear all accumulated energy measurements from flow cards.",
+          "nl": "Klik om de externe energie totaal teller naar nul te resetten. Dit wist alle geaccumuleerde energie metingen van flow kaarten.",
+          "de": "Klicken Sie, um den externen Gesamtenergiezähler auf Null zurückzusetzen. Dies löscht alle akkumulierten Energiemessungen von Flow-Karten.",
+          "fr": "Cliquez pour réinitialiser le compteur d'énergie totale externe à zéro. Cela effacera toutes les mesures d'énergie accumulées des cartes de flux."
+        },
+        "value": false
+      },
+      {
+        "id": "reset_external_energy_daily",
+        "type": "checkbox",
+        "label": {
+          "en": "Reset external energy daily counter",
+          "nl": "Reset externe energie dagelijkse teller",
+          "de": "Externe Tagesenergiezähler zurücksetzen",
+          "fr": "Réinitialiser le compteur d'énergie quotidienne externe"
+        },
+        "hint": {
+          "en": "Click to reset the external daily energy counter to zero. This will clear today's accumulated energy measurements from flow cards.",
+          "nl": "Klik om de externe dagelijkse energie teller naar nul te resetten. Dit wist de geaccumuleerde energie metingen van vandaag van flow kaarten.",
+          "de": "Klicken Sie, um den externen Tagesenergiezähler auf Null zurückzusetzen. Dies löscht die heutigen akkumulierten Energiemessungen von Flow-Karten.",
+          "fr": "Cliquez pour réinitialiser le compteur d'énergie quotidienne externe à zéro. Cela effacera les mesures d'énergie accumulées d'aujourd'hui des cartes de flux."
+        },
+        "value": false
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "App Info",
+      "nl": "App Info",
+      "de": "App Info",
+      "fr": "Info App"
+    },
+    "children": [
+      {
+        "id": "info_app_version",
+        "type": "text",
+        "label": {
+          "en": "Version",
+          "nl": "Versie",
+          "de": "Version",
+          "fr": "Version"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_app_id",
+        "type": "text",
+        "label": {
+          "en": "App ID",
+          "nl": "App ID",
+          "de": "App ID",
+          "fr": "ID App"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_app_name",
+        "type": "text",
+        "label": {
+          "en": "Name",
+          "nl": "Naam",
+          "de": "Name",
+          "fr": "Nom"
+        },
+        "value": ""
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Homey",
+      "nl": "Homey",
+      "de": "Homey",
+      "fr": "Homey"
+    },
+    "children": [
+      {
+        "id": "info_homey_version",
+        "type": "text",
+        "label": {
+          "en": "Homey Version",
+          "nl": "Homey Versie",
+          "de": "Homey Version",
+          "fr": "Version Homey"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_homey_platform",
+        "type": "text",
+        "label": {
+          "en": "Platform",
+          "nl": "Platform",
+          "de": "Plattform",
+          "fr": "Plateforme"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_homey_platform_version",
+        "type": "text",
+        "label": {
+          "en": "Platform Version",
+          "nl": "Platform Versie",
+          "de": "Plattformversion",
+          "fr": "Version Plateforme"
+        },
+        "value": ""
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "System",
+      "nl": "Systeem",
+      "de": "System",
+      "fr": "Système"
+    },
+    "children": [
+      {
+        "id": "info_node_version",
+        "type": "text",
+        "label": {
+          "en": "Node.js Version",
+          "nl": "Node.js Versie",
+          "de": "Node.js Version",
+          "fr": "Version Node.js"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_platform",
+        "type": "text",
+        "label": {
+          "en": "OS Platform",
+          "nl": "OS Platform",
+          "de": "OS-Plattform",
+          "fr": "Plateforme OS"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_arch",
+        "type": "text",
+        "label": {
+          "en": "Architecture",
+          "nl": "Architectuur",
+          "de": "Architektur",
+          "fr": "Architecture"
+        },
+        "value": ""
+      },
+      {
+        "id": "info_uptime",
+        "type": "text",
+        "label": {
+          "en": "System Uptime",
+          "nl": "Systeem Uptime",
+          "de": "Systemlaufzeit",
+          "fr": "Temps de fonctionnement"
+        },
+        "value": ""
+      }
+    ]
+  },
+  {
+    "id": "dashboard_port",
+    "type": "number",
+    "label": {
+      "en": "Tuya dashboard port",
+      "nl": "Tuya-dashboardpoort"
+    },
+    "hint": {
+      "en": "Open http://HOMEY-IP:8092 (or this port). Shared by all Tuya devices. At startup the first device selects the port; changing this setting moves the shared dashboard.",
+      "nl": "Open http://HOMEY-IP:8092 (of deze poort). Gedeeld door alle Tuya-apparaten. Bij opstarten kiest het eerste apparaat de poort; wijzigen van deze instelling verplaatst het gezamenlijke dashboard."
+    },
+    "value": 8092,
+    "min": 1,
+    "max": 65535,
+    "step": 1
+  }
+]

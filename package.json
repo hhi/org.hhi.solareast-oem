@@ -1,0 +1,34 @@
+{
+  "name": "org.hhi.solareast-oem",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=12.16.1"
+  },
+  "scripts": {
+    "build": "tsc",
+    "check:caps": "node scripts/check-capability-ownership.js",
+    "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
+    "test": "npm run build && node --test test/unit/*.test.js",
+    "simulate": "npm run build && node test/simulation/adaptive-simulation.js",
+    "simulate:building-model": "npm run build && node test/simulation/building-model-review/adr062.js all && TAU_MAX=500 node test/simulation/building-model-review/scenarios.js all ideaal,realistisch"
+  },
+  "devDependencies": {
+    "@tsconfig/node16": "^16.1.4",
+    "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
+    "@types/node": "^22.15.29",
+    "eslint": "^7.32.0",
+    "eslint-config-athom": "^3.1.5",
+    "eslint-plugin-homey-app": "^1.0.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "jsmodbus": "^4.0.10",
+    "tuyapi": "github:codetheweb/tuyapi"
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "9.0.7"
+    }
+  }
+}

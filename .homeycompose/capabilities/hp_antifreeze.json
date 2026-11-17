@@ -1,0 +1,33 @@
+{
+  "id": "hp_antifreeze",
+  "type": "boolean",
+  "title": {
+    "en": "Antifreeze protection active",
+    "nl": "Antivriesbeveiliging actief",
+    "de": "Frostschutz aktiv",
+    "fr": "Protection antigel active"
+  },
+  "icon": "/assets/antifreeze.svg",
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "insights": true,
+  "insightsTitleTrue": {
+    "en": "Antifreeze protection activated",
+    "nl": "Antivriesbeveiliging geactiveerd",
+    "de": "Frostschutz aktiviert",
+    "fr": "Protection antigel activée"
+  },
+  "insightsTitleFalse": {
+    "en": "Antifreeze protection deactivated",
+    "nl": "Antivriesbeveiliging uitgeschakeld",
+    "de": "Frostschutz deaktiviert",
+    "fr": "Protection antigel désactivée"
+  },
+  "description": {
+    "en": "Antifreeze protection status. True while the heat pump is protecting the water circuit against freezing.",
+    "nl": "Status van de vorstbeveiliging. Waar zolang de warmtepomp het watercircuit tegen bevriezing beschermt.",
+    "de": "Status des Frostschutzes. Wahr, solange die Wärmepumpe den Wasserkreis vor dem Einfrieren schützt.",
+    "fr": "État de la protection antigel. Vrai tant que la pompe à chaleur protège le circuit d'eau contre le gel."
+  }
+}

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Live — Warmtepomp</title>
+<link rel="stylesheet" href="/styles/dashboard-live.css">
+</head>
+<body>
+
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/interactive">Interactief</a>
+  <a href="/live" class="active">Live</a>
+  <a href="/expert">Expert</a>
+  <a href="/changelog">Change Log</a>
+  <a href="/heating-curve">Stooklijn</a>
+  <a href="/processchema">Processchema</a>
+  <span class="nav-conn">
+    <span id="conn-dot"></span><span id="conn-label">—</span>
+  </span>
+</nav>
+
+<div id="waiting">Wachten op eerste Modbus-poll…</div>
+
+<div id="main">
+  <div id="alarm-bar" hidden></div>
+  <div id="cap-section"></div>
+</div>
+
+<script>
+// ── Capability groepen ─────────────────────────────────────────────────────
+const CAP_GROUPS = [
+  { label: 'Status',          match: id => ['onoff','hp_running','hp_mode','hp_enum_work_mode_modbus','hp_enum_countdown_set','hp_enum_capacity_set_modbus','hp_connection_active','hp_connection_status'].includes(id) },
+  { label: 'Storingen',       match: id => id.startsWith('alarm') || id.startsWith('hp_fault') },
+  { label: 'Setpoints',       match: id => id.startsWith('target_temperature') },
+  { label: 'Temperaturen',    match: id => id.startsWith('measure_temperature') },
+  { label: 'Vermogen',        match: id => ['measure_power','measure_voltage','measure_current','meter_power','hp_external_power','defrost_active_power'].includes(id) || id.startsWith('measure_current.') },
+  { label: 'Mechanisch',      match: id => ['measure_water','hp_external_flow','hp_pump_pwm','hp_fan_speed','hp_eev_step','hp_evi_step'].includes(id) || id.startsWith('measure_frequency') },
+  { label: 'Prestaties',      match: id => (id.startsWith('hp_cop') || id.startsWith('hp_scop') || id === 'hp_performance_score') && !id.includes('diagnostics') },
+  { label: 'Stooklijn',       match: id => id.startsWith('heating_curve') },
+  { label: 'Ontdooiing',      match: id => ['hp_defrosting','hp_defrost_count_24h','hp_defrost_minutes_24h','hp_state_defrost_state','hp_state_compressor_state','hp_state_backwater_modbus','hp_antifreeze','hp_sterilization'].includes(id) },
+  { label: 'Energie & Prijs', match: id => id.startsWith('hp_energy') || id.startsWith('hp_price') || id.startsWith('hp_external_energy') || id.startsWith('hp_cheapest') },
+  { label: 'Extern',          match: id => id.startsWith('hp_external') && !['hp_external_power','hp_external_flow'].includes(id) },
+  { label: 'Gebouwmodel',     match: id => (id.startsWith('building') || id.startsWith('hp_building') || id.startsWith('hp_forecast') || id.startsWith('hp_optimal') || id.startsWith('hp_simulated')) && !id.includes('diagnostics') },
+  { label: 'Verbinding',      match: id => id.startsWith('hp_connection') || id.startsWith('hp_firmware') || id.startsWith('hp_protocol') || id.startsWith('hp_daily_disconnect') || id.startsWith('hp_openmeteo') || id.startsWith('hp_last_') },
+  { label: 'Diagnostiek',     match: id => id.includes('diagnostics') || id.endsWith('_data') || id === 'hp_performance_report' },
+  { label: 'Overig',          match: () => true },
+];
+
+const RELEVANT    = ['Status','Storingen','Setpoints','Temperaturen','Vermogen','Mechanisch','Prestaties','Stooklijn','Ontdooiing'];
+const OVERIGE     = ['Energie & Prijs','Extern','Gebouwmodel','Verbinding','Overig'];
+const DIAGNOSTIEK = ['Diagnostiek'];
+const previousCapabilityValues = new Map();
+let hasRenderedCapabilities = false;
+
+function capGroup(id) {
+  for (const g of CAP_GROUPS) if (g.match(id)) return g.label;
+  return 'Overig';
+}
+
+function renderCapTile(cap, changedIds) {
+  const iconHtml = cap.icon
+    ? `<img class="cap-icon" src="${cap.icon}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">`
+    : '';
+  const raw = cap.value;
+  const isBool = typeof raw === 'boolean' || cap.type === 'boolean';
+  let valClass = 'cap-value';
+  let valText = '';
+  if (isBool) {
+    const isAlarm = cap.id.startsWith('alarm') || cap.id.startsWith('hp_fault');
+    valClass += raw ? (isAlarm ? ' bool-alarm' : ' bool-true') : ' bool-false';
+    valText = raw ? (isAlarm ? '⚠ Actief' : '✓ Actief') : '○ Inactief';
+  } else if (typeof raw === 'number') {
+    valText = raw.toFixed(raw % 1 === 0 ? 0 : 2);
+  } else {
+    valText = String(raw ?? '—');
+  }
+  const updatedClass = changedIds?.has(cap.id) ? ' updated' : '';
+  return `<div class="cap-card${updatedClass}">
+    <div class="cap-icon-wrap">${iconHtml}</div>
+    <div class="cap-body">
+      <div class="cap-title" title="${cap.title}">${cap.title}</div>
+      <div class="${valClass}">${valText}</div>
+      ${cap.unit ? `<div class="cap-unit">${cap.unit}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderRubricRow(labels, grouped, changedIds) {
+  const active = labels.filter(l => grouped[l]?.length > 0);
+  if (!active.length) return '';
+  let html = '<div class="rubric-section">';
+  for (const label of active) {
+    html += `<div class="rubric-card">
+      <div class="rubric-header">${label}</div>
+      <div class="rubric-tiles">${grouped[label].map(cap => renderCapTile(cap, changedIds)).join('')}</div>
+    </div>`;
+  }
+  return html + '</div>';
+}
+
+function renderDiagSection(labels, grouped, changedIds) {
+  const caps = labels.flatMap(l => grouped[l] ?? []);
+  if (!caps.length) return '';
+  let html = '<div class="rubric-section">';
+  for (const cap of caps) {
+    const val = cap.value != null ? String(cap.value) : '—';
+    const updatedClass = changedIds?.has(cap.id) ? ' updated' : '';
+    html += `<div class="diag-tile${updatedClass}">
+      <div class="rubric-header" title="${cap.title}">${cap.title}</div>
+      <div class="diag-value">${val}</div>
+    </div>`;
+  }
+  return html + '</div>';
+}
+
+function valueKey(value) {
+  if (typeof value === 'number') return value % 1 === 0 ? String(value) : value.toFixed(2);
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return String(value);
+}
+
+function changedCapabilityIds(caps) {
+  const changed = new Set();
+  for (const cap of caps) {
+    const next = valueKey(cap.value);
+    if (hasRenderedCapabilities && previousCapabilityValues.get(cap.id) !== next) {
+      changed.add(cap.id);
+    }
+    previousCapabilityValues.set(cap.id, next);
+  }
+  hasRenderedCapabilities = true;
+  return changed;
+}
+
+function renderCapabilities(caps) {
+  const changedIds = changedCapabilityIds(caps);
+  const grouped = {};
+  for (const cap of caps) {
+    const g = capGroup(cap.id);
+    if (!grouped[g]) grouped[g] = [];
+    grouped[g].push(cap);
+  }
+
+  const section = document.getElementById('cap-section');
+  let html = renderRubricRow(RELEVANT, grouped, changedIds);
+
+  const hasOverige = OVERIGE.some(g => grouped[g]?.length > 0);
+  if (hasOverige) {
+    html += '<div class="section-divider"><span>Overige</span></div>';
+    html += renderRubricRow(OVERIGE, grouped, changedIds);
+  }
+
+  const hasDiag = DIAGNOSTIEK.some(g => grouped[g]?.length > 0);
+  if (hasDiag) {
+    html += '<div class="section-divider"><span>Diagnostiek</span></div>';
+    html += renderDiagSection(DIAGNOSTIEK, grouped, changedIds);
+  }
+  section.innerHTML = html;
+}
+
+function updateAlarmBar(caps) {
+  const bar = document.getElementById('alarm-bar');
+  if (!bar) return;
+  const alarms = caps.filter(c => (c.id.startsWith('alarm') || c.id.startsWith('hp_fault')) && c.value === true);
+  const defrost = caps.find(c => c.id === 'hp_defrosting')?.value;
+  const antifreeze = caps.find(c => c.id === 'hp_antifreeze')?.value;
+
+  if (!alarms.length && !defrost && !antifreeze) { bar.hidden = true; return; }
+  bar.hidden = false;
+  let html = '';
+  alarms.forEach(c => { html += `<span class="alarm-chip">${c.title}</span>`; });
+  if (defrost)    html += '<span class="status-chip">Ontdooien actief</span>';
+  if (antifreeze) html += '<span class="status-chip">Antivries actief</span>';
+  bar.innerHTML = html;
+}
+
+function updateConn(caps) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  const status = caps.find(c => c.id === 'hp_connection_status')?.value;
+  const active = caps.find(c => c.id === 'hp_connection_active')?.value;
+  if (!dot) return;
+  const q = active ? 'online' : (status ? 'degraded' : 'offline');
+  dot.className = q;
+  lbl.textContent = active ? 'Verbonden' : (status || 'Offline');
+}
+
+// ── Poll loop ──────────────────────────────────────────────────────────────
+async function refresh() {
+  try {
+    const res = await fetch('/api/capabilities');
+    if (!res.ok) return;
+    const caps = await res.json();
+
+    document.getElementById('waiting').style.display = 'none';
+    document.getElementById('main').classList.add('visible');
+
+    updateConn(caps);
+    updateAlarmBar(caps);
+    renderCapabilities(caps);
+  } catch (_) { /* stille fout */ }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

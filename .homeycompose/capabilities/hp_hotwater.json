@@ -1,0 +1,36 @@
+{
+  "id": "hp_hotwater",
+  "title": {
+    "en": "Hot Water Set Temp",
+    "nl": "Warmwater stel temperatuur",
+    "de": "Warmwasser Solltemperatur",
+    "fr": "Température de consigne eau chaude"
+  },
+  "type": "number",
+  "getable": true,
+  "setable": true,
+  "uiComponent": "slider",
+  "units": {
+    "en": "℃",
+    "nl": "℃",
+    "de": "℃",
+    "fr": "℃"
+  },
+  "min": 10,
+  "max": 75,
+  "step": 1,
+  "insights": true,
+  "insightsTitle": {
+    "en": "Hot Water Set Temp",
+    "nl": "Warmwater stel temperatuur",
+    "de": "Warmwasser Solltemperatur",
+    "fr": "Température de consigne eau chaude"
+  },
+
+  "description": {
+    "en": "dp 101: minitemp_set - Domestic hot water target temperature setting",
+    "nl": "dp 101: minitemp_set - Sanitair warmwater gewenste temperatuur instelling",
+    "de": "dp 101: minitemp_set - Brauchwarmwasser-Solltemperatureinstellung",
+    "fr": "dp 101: minitemp_set - Réglage de la température de consigne de l'eau chaude sanitaire"
+  }
+}

@@ -1,0 +1,5235 @@
+/* eslint-disable import/no-unresolved */
+/* eslint-disable node/no-missing-import */
+/* eslint-disable import/extensions */
+import os from 'os';
+import Homey from 'homey';
+import { createHash } from 'crypto';
+import TuyaDevice from 'tuyapi';
+import { TuyaDashboardDevice, CapabilityMeta } from '../../lib/tuya/services/dashboard-device';
+import { TuyaDashboardHost } from '../../lib/tuya/services/dashboard-service';
+import { HpMapping } from '../../lib/tuya/definitions/hp-mapping';
+import { DeviceConstants } from '../../lib/tuya/constants';
+import { isSetpointRangeValid, resolveMaxSetpoint, SETPOINT_RANGE_MIN_GAP } from '../../lib/shared/adaptive/setpoint-range';
+import { TuyaErrorCategorizer, type CategorizedError } from '../../lib/shared/error-types';
+import { COPCalculator, type COPDataSources, type COPCalculationResult } from '../../lib/shared/services/cop-calculator';
+import { SCOPCalculator, type COPMeasurement } from '../../lib/tuya/services/scop-calculator';
+import { RollingCOPCalculator, type COPDataPoint, type RollingCOPResult } from '../../lib/shared/services/rolling-cop-calculator';
+import { ServiceCoordinator } from '../../lib/tuya/services/service-coordinator';
+import {
+  buildLiveOperationWidgetState,
+  type LiveOperationWidgetState,
+} from '../../lib/tuya/services/widget-state-service';
+import { Logger } from '../../lib/shared/logger';
+import { BuildingModelLearner } from '../../lib/shared/adaptive/building-model-learner';
+import { migratePriceThresholdMode, useAutoThresholdsForNewDevice } from '../../lib/shared/adaptive/price-threshold-mode-migration';
+import { formatHourMinute, nextLocalMidnight, resolveHomeyTimezone } from '../../lib/shared/utils/time-format';
+import { isExternalValueFresh } from '../../lib/shared/utils/external-value-age';
+import { formatCopMethodDisplay } from '../../lib/shared/utils/cop-method-display';
+
+/**
+ * Optional diagnostic capabilities, grouped by the device setting that gates them.
+ * They are added on demand and removed again when the setting is switched off, so a device
+ * that never enabled diagnostics keeps exactly the capabilities it already had.
+ */
+const DiagnosticCapabilities = {
+  connection: [
+    'hp_daily_disconnect_count',
+    'hp_zombie_detections_daily',
+    'hp_connection_diagnostics',
+  ] as const,
+};
+
+// Extract allCapabilities and allArraysSwapped from HpMapping
+const { allCapabilities, allArraysSwapped } = HpMapping;
+
+// Types for combined flow card management
+interface CapabilityCategories {
+  temperature: string[];
+  voltage: string[];
+  current: string[];
+  power: string[];
+  pulseSteps: string[];
+  states: string[];
+  efficiency: string[];
+}
+
+/* eslint-disable camelcase, @typescript-eslint/no-unused-vars */
+interface UserFlowPreferences {
+  flow_temperature_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_voltage_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_current_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_power_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_pulse_steps_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_state_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_efficiency_alerts: 'disabled' | 'auto' | 'enabled';
+  flow_expert_mode: boolean;
+  show_disconnect_diagnostic: boolean;
+}
+/* eslint-enable camelcase, @typescript-eslint/no-unused-vars */
+
+interface COPSettings {
+  enableCOP: boolean;
+  calculationMethod: 'auto' | 'direct_thermal' | 'carnot_estimation' | 'temperature_difference';
+  enableOutlierDetection: boolean;
+  customOutlierThresholds: {
+    minCOP: number;
+    maxCOP: number;
+  };
+  externalDevices: {
+    power: { enabled: boolean; deviceId: string; capability: string };
+    flow: { enabled: boolean; deviceId: string; capability: string };
+    ambient: { enabled: boolean; deviceId: string; capability: string };
+  };
+}
+
+/**
+ * Fault code mapping for DPS 15 (hp_fault)
+ * Maps numeric fault codes to human-readable descriptions
+ * Note: These codes are specific to Hp heat pump systems
+ */
+const FAULT_CODE_DESCRIPTIONS: Record<number, { en: string; nl: string }> = {
+  0: {
+    en: 'No fault',
+    nl: 'Geen storing',
+  },
+  1: {
+    en: 'High pressure protection',
+    nl: 'Hogedrukbeveiliging',
+  },
+  2: {
+    en: 'Low pressure protection',
+    nl: 'Lagedrukbeveiliging',
+  },
+  3: {
+    en: 'Compressor overheating',
+    nl: 'Compressor oververhitting',
+  },
+  4: {
+    en: 'Discharge temperature too high',
+    nl: 'Uitlaattemperatuur te hoog',
+  },
+  5: {
+    en: 'Water flow sensor fault',
+    nl: 'Waterdoorstroomsensor storing',
+  },
+  6: {
+    en: 'Inlet temperature sensor fault',
+    nl: 'Inlaattemperatuursensor storing',
+  },
+  7: {
+    en: 'Outlet temperature sensor fault',
+    nl: 'Uitlaattemperatuursensor storing',
+  },
+  8: {
+    en: 'Ambient temperature sensor fault',
+    nl: 'Omgevingstemperatuursensor storing',
+  },
+  9: {
+    en: 'Coil temperature sensor fault',
+    nl: 'Spoeltemperatuursensor storing',
+  },
+  10: {
+    en: 'Low water flow protection',
+    nl: 'Lage waterdoorstroom beveiliging',
+  },
+  11: {
+    en: 'Antifreeze protection active',
+    nl: 'Vorstbeveiliging actief',
+  },
+  12: {
+    en: 'Phase loss or reverse phase',
+    nl: 'Faseuitval of omkeerde fase',
+  },
+  13: {
+    en: 'Communication error',
+    nl: 'Communicatiefout',
+  },
+  14: {
+    en: 'EEV valve fault',
+    nl: 'EEV-klep storing',
+  },
+  15: {
+    en: 'System pressure abnormal',
+    nl: 'Systeemdruk abnormaal',
+  },
+};
+
+/**
+ * Get fault description in user's language
+ * @param faultCode - Numeric fault code from DPS 15
+ * @param language - Language code ('en' or 'nl')
+ * @returns Human-readable fault description
+ */
+function getFaultDescription(faultCode: number, language: 'en' | 'nl' = 'en'): string {
+  const description = FAULT_CODE_DESCRIPTIONS[faultCode];
+  if (description) {
+    return description[language];
+  }
+  // Fallback for unknown fault codes
+  return language === 'nl'
+    ? `Onbekende storing (code: ${faultCode})`
+    : `Unknown fault (code: ${faultCode})`;
+}
+
+class MyDevice extends Homey.Device {
+  private dashboardState: TuyaDashboardDevice | null = null;
+
+  private dashboardId(): string {
+    return createHash('sha256').update(JSON.stringify(this.getData())).digest('hex');
+  }
+
+  private async registerDashboard(): Promise<void> {
+    const app = this.homey.app as unknown as TuyaDashboardHost;
+    try {
+      this.dashboardState = app.tuyaDashboard.register(this.dashboardId(), {
+        name: () => this.getName(),
+        values: () => Object.fromEntries(this.getCapabilities().map((id) => [id, this.getCapabilityValue(id)])),
+        options: (id) => this.getCapabilityOptions(id) as CapabilityMeta,
+        snapshot: () => this.getLiveOperationWidgetState(),
+        adaptiveEnabled: () => this.getSetting('adaptive_control_enabled') === true,
+        write: (id, value) => this.triggerCapabilityListener(id, value),
+      });
+      if (app.tuyaDashboard.listeningPort === null) {
+        await app.setTuyaDashboardPort(Number(this.getSetting('dashboard_port') ?? 8092));
+      }
+    } catch (error) {
+      this.error('Tuya dashboard unavailable; device operation continues', error);
+    }
+  }
+
+  tuya: TuyaDevice | undefined;
+  allCapabilities: Record<string, number[]> = allCapabilities;
+  allArraysSwapped: Record<number, string> = allArraysSwapped;
+  settableCapabilities: string[] = [];
+  lastNotificationTime: number = 0;
+  lastNotificationKey: string = '';
+
+  // Note: Flow card management now handled by FlowCardManagerService via ServiceCoordinator
+  private isFlowCardsInitialized: boolean = false;
+
+  // Note: Capability health monitoring now handled by CapabilityHealthService via ServiceCoordinator
+
+  // Note: Energy tracking interval now managed by EnergyTrackingService via ServiceCoordinator
+
+  // COP (Coefficient of Performance) calculation
+  private copCalculationInterval: NodeJS.Timeout | null = null;
+  private copSettings: COPSettings | null = null;
+
+  // SCOP (Seasonal Coefficient of Performance) calculation
+  private scopCalculator: SCOPCalculator | null = null;
+  private scopUpdateInterval: NodeJS.Timeout | null = null;
+
+  // Rolling COP calculation
+  private rollingCOPCalculator: RollingCOPCalculator | null = null;
+  private lastRollingCOPUpdate: number = 0;
+  // Idle period monitoring
+  private idleCheckInterval: NodeJS.Timeout | null = null;
+  private lastCOPDataPointTime: number = 0;
+  private compressorStateHistory: Array<{ timestamp: number, running: boolean }> = [];
+
+  // Memory leak prevention: tracked timers for cleanup (v2.0.1+)
+  private connectionStatusInterval: NodeJS.Timeout | null = null;
+  private dailyEnergyResetTimeout: NodeJS.Timeout | null = null;
+  private flowCardInitRetryTimeout: NodeJS.Timeout | null = null;
+
+  // State tracking for flow card triggers (v1.0.8)
+  private lastCOPOutlierStatus = false; // For cop_outlier_detected trigger
+  private lastCOPValue = 0; // For cop_efficiency_changed trigger
+  private lastInletTemp: number | null = null; // For inlet_temperature_changed
+  private lastOutletTemp: number | null = null; // For outlet_temperature_changed
+  private lastAmbientTemp: number | null = null; // For ambient_temperature_changed
+
+  // Expert mode flow card triggers (v1.3.12)
+  private lastCompressorFreq: number | null = null; // For compressor_efficiency_alert
+  private lastFanMotorFreq: number | null = null; // For fan_motor_efficiency_alert
+  private lastWaterFlow: number | null = null; // For water_flow_alert
+
+  // Temperature alert state tracking (v2.5.x)
+  private lastCoilerTemp: number | null = null; // For coiler_temperature_alert
+  private lastDischargeTemp: number | null = null; // For discharge_temperature_alert
+  private lastSuctionTemp: number | null = null; // For suction_temperature_alert
+  private lastHighPressureTemp: number | null = null; // For high_pressure_temperature_alert
+  private lastLowPressureTemp: number | null = null; // For low_pressure_temperature_alert
+  private lastIncoilerTemp: number | null = null; // For incoiler_temperature_alert
+  private lastTankTemp: number | null = null; // For tank_temperature_alert
+  private lastEconomizerInletTemp: number | null = null; // For economizer_inlet_temperature_alert
+  private lastEconomizerOutletTemp: number | null = null; // For economizer_outlet_temperature_alert
+
+  // Pulse steps alert state tracking (v2.5.x)
+  private lastEevPulseSteps: number | null = null; // For eev_pulse_steps_alert
+  private lastEviPulseSteps: number | null = null; // For evi_pulse_steps_alert
+
+  // External power energy tracking
+  private lastExternalPowerTimestamp: number | null = null;
+
+  // Debounce map for temperature critical alerts (per capability)
+  private lastTempAlertAt: Map<string, number> = new Map();
+
+  // Fault detection state tracking (v1.0.7 - fault_detected trigger)
+  private lastFaultCode: number = 0;
+
+  // Boolean state change tracking (v1.1.0 - state change triggers)
+  private lastCompressorState: boolean | null = null;
+  private lastDefrostState: boolean | null = null;
+  private defrostStartTime: number | null = null; // v2.9.0: DefrostLearner event tracking
+  private lastBackwaterState: boolean | null = null;
+
+  // Rolling 24h defrost statistics (v2.9.14: moved from AdaptiveControlService)
+  private defrostHistory: { timestamp: number; durationSec: number }[] = [];
+  private defrost24hRefreshInterval: NodeJS.Timeout | null = null;
+
+  // Enum mode change tracking (v1.1.0 - enum state change triggers)
+  private lastHeatingMode: string | null = null;
+  private lastWorkMode: string | null = null;
+  private lastWaterMode: string | null = null;
+
+  // Service Coordinator - manages all device services
+  private serviceCoordinator: ServiceCoordinator | null = null;
+
+  // Structured logger with configurable log levels (v2.1.0)
+  private logger!: Logger;
+
+  // Debug-conditional logging method (DEPRECATED - use logger.debug() instead)
+  private debugLog(...args: unknown[]) {
+    if (process.env.DEBUG === '1') {
+      this.log(...args);
+    }
+  }
+
+  /**
+   * Granular category-based logging with DEBUG_LEVEL support (v1.0.26)
+   *
+   * Environment variables:
+   * - DEBUG_LEVEL=all     → Log all categories
+   * - DEBUG_LEVEL=core    → Connection/core functionality only
+   * - DEBUG_LEVEL=cop     → COP/SCOP/Energy calculations only
+   * - DEBUG_LEVEL=none    → No logging (default)
+   *
+   * Also respects legacy DEBUG=1 for backwards compatibility
+   */
+  private shouldLog(category: 'core' | 'cop' | 'scop' | 'energy'): boolean {
+    // Determine effective DEBUG_LEVEL
+    // Legacy: DEBUG=1 without explicit DEBUG_LEVEL → default to 'core'
+    // This shows connection logs while filtering out COP/SCOP spam
+    let level: string;
+    if (process.env.DEBUG === '1' && !process.env.DEBUG_LEVEL) {
+      level = 'core'; // Legacy DEBUG=1 mode: show core logs only
+    } else {
+      level = process.env.DEBUG_LEVEL || 'none';
+    }
+
+    // Level=all includes everything
+    if (level === 'all') {
+      return true;
+    }
+
+    // Exact category match
+    if (level === category) {
+      return true;
+    }
+
+    // Grouped categories: cop level includes cop/scop/energy
+    if (level === 'cop' && (category === 'cop' || category === 'scop' || category === 'energy')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Category-based logging with DEBUG_LEVEL filtering
+   */
+  private categoryLog(category: 'core' | 'cop' | 'scop' | 'energy', message: string, ...args: unknown[]) {
+    if (this.shouldLog(category)) {
+      this.log(message, ...args);
+    }
+  }
+
+  /**
+   * Override Homey's log() method to route through Logger (v2.1.0)
+   * All existing this.log() calls now respect the user's log level setting
+   */
+  log(message?: unknown, ...args: unknown[]): void {
+    // If logger is initialized, use it at INFO level
+    // Otherwise fall back to Homey's default log (during early initialization)
+    if (this.logger) {
+      this.logger.info(this.safeStringify(message), ...args);
+    } else {
+      super.log(message, ...args);
+    }
+  }
+
+  /**
+   * Override Homey's error() method to route through Logger (v2.1.0)
+   * Errors are always logged regardless of log level
+   */
+  error(message?: unknown, ...args: unknown[]): void {
+    // If logger is initialized, use it
+    // Otherwise fall back to Homey's default error (during early initialization)
+    if (this.logger) {
+      this.logger.error(this.safeStringify(message), ...args);
+    } else {
+      super.error(message, ...args);
+    }
+  }
+
+  /**
+   * Safely convert any value to string, handling circular references
+   * This prevents crashes when logging complex error objects
+   */
+  private safeStringify(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return '';
+
+    // Primitive types are safe
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+    // For objects, use JSON.stringify with circular reference handler
+    try {
+      return JSON.stringify(value, this.getCircularReplacer());
+    } catch (e) {
+      // If JSON.stringify fails, fall back to toString()
+      try {
+        return String(value);
+      } catch (e2) {
+        // Last resort: return type information
+        return `[${typeof value}]`;
+      }
+    }
+  }
+
+  /**
+   * Create a replacer function that handles circular references
+   * Used by JSON.stringify to prevent "Converting circular structure to JSON" errors
+   */
+  private getCircularReplacer() {
+    const seen = new WeakSet();
+    return (_key: string, value: unknown) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    };
+  }
+
+  /**
+   * Initialize direct Tuya device for fallback purposes
+   */
+  private async initializeFallbackTuyaDevice(): Promise<void> {
+    if (this.tuya) return; // Already initialized
+
+    const id = (this.getStoreValue('device_id') || '').toString().trim();
+    const key = (this.getStoreValue('local_key') || '').toString().trim();
+    const ip = (this.getStoreValue('ip_address') || '').toString().trim();
+    const version = (this.getStoreValue('protocol_version') || '3.3').toString().trim();
+
+    if (!id || !key) {
+      throw new Error('Tuya credentials missing for fallback initialization');
+    }
+
+    this.tuya = new TuyaDevice({
+      id,
+      key,
+      ip,
+      version,
+    });
+
+    this.debugLog(`Initialized fallback TuyaDevice for direct communication (Protocol: ${version})`);
+  }
+
+  /**
+   * Send a command to Tuya device via ServiceCoordinator or direct fallback
+   * @param dp - Tuya data point number
+   * @param value - Value to send
+   * @returns Promise that resolves when command is sent
+   */
+  private async sendTuyaCommand(dp: number, value: string | number | boolean): Promise<void> {
+    // Try to send via ServiceCoordinator's TuyaConnectionService
+    if (this.serviceCoordinator) {
+      try {
+        const tuyaService = this.serviceCoordinator.getTuyaConnection();
+        // Send value with correct type (string/number/boolean) - DO NOT convert to string!
+        await tuyaService.sendCommand({ [dp]: value });
+        this.log(`Successfully sent to Tuya via ServiceCoordinator: dp ${dp} = ${value} (${typeof value})`);
+        return;
+      } catch (err) {
+        this.error('ServiceCoordinator Tuya command failed, falling back to direct method:', err);
+        // Fall through to direct method
+      }
+    }
+
+    // Fallback to direct Tuya command
+    await this.initializeFallbackTuyaDevice();
+    await this.connectTuya();
+
+    if (!this.tuya) {
+      throw new Error('Tuya device is not initialized for fallback');
+    }
+
+    // TuyAPI syntax: set({ multiple: true, data: { [dp]: value } })
+    await this.tuya.set({ multiple: true, data: { [dp]: value } });
+    this.log(`Successfully sent to Tuya (direct fallback): dp ${dp} = ${value} (${typeof value})`);
+  }
+
+  /**
+   * Handle and log categorized Tuya errors with enhanced information
+   * @param error - The original error
+   * @param context - Context where error occurred
+   * @returns Categorized error information
+   */
+  private handleTuyaError(error: Error, context: string): CategorizedError {
+    const categorizedError = TuyaErrorCategorizer.categorize(error, context);
+
+    // Log the categorized error
+    this.error(TuyaErrorCategorizer.formatForLogging(categorizedError));
+
+    // Log debug information if enabled
+    if (process.env.DEBUG === '1') {
+      this.debugLog('Error categorization details:', {
+        type: categorizedError.type,
+        recoverable: categorizedError.recoverable,
+        retryable: categorizedError.retryable,
+        userMessage: categorizedError.userMessage,
+        recoveryActions: categorizedError.recoveryActions,
+      });
+    }
+
+    return categorizedError;
+  }
+
+  private async sendCriticalNotification(title: string, message: string) {
+    const now = Date.now();
+    const notificationKey = `${title}:${message}`;
+
+    // Prevent spam - only send notifications every 30 minutes for the same device
+    // Also prevent duplicate notifications within 5 seconds (for duplicate events)
+    if (now - this.lastNotificationTime > DeviceConstants.NOTIFICATION_THROTTLE_MS
+      || (this.lastNotificationKey !== notificationKey && now - this.lastNotificationTime > DeviceConstants.NOTIFICATION_KEY_CHANGE_THRESHOLD_MS)) {
+      try {
+        await this.homey.notifications.createNotification({
+          excerpt: `${this.getName()}: ${title}`,
+        });
+        this.lastNotificationTime = now;
+        this.lastNotificationKey = notificationKey;
+        this.log(`Critical notification sent: ${title}`);
+      } catch (err) {
+        this.error('Failed to send notification:', err);
+      }
+    }
+  }
+
+  /**
+   * Check if device is currently connected to Tuya
+   * Delegates to ServiceCoordinator for authoritative connection state
+   * @returns true if device is connected, false otherwise
+   */
+  private isDeviceConnected(): boolean {
+    // Primary path: ServiceCoordinator's TuyaConnectionService (v0.99.23+)
+    if (this.serviceCoordinator) {
+      return this.serviceCoordinator.getTuyaConnection()?.isDeviceConnected() ?? false;
+    }
+
+    // Fallback path: Legacy tuya instance (should be rare/never used)
+    // Only reached if ServiceCoordinator initialization failed
+    return this.tuya?.isConnected() ?? false;
+  }
+
+  /**
+   * Connect to the Tuya device with proper error handling
+   * @returns Promise that resolves when connection is established
+   * @throws Error if connection fails or device is not initialized
+   */
+  async connectTuya(): Promise<void> {
+    // Delegate to ServiceCoordinator's TuyaConnectionService if available
+    if (this.serviceCoordinator) {
+      try {
+        const tuyaService = this.serviceCoordinator.getTuyaConnection();
+        await tuyaService.connectTuya();
+        // No need to sync state - isDeviceConnected() will query service directly
+        this.debugLog('Connected to Tuya device via ServiceCoordinator');
+        return;
+      } catch (err) {
+        this.error('ServiceCoordinator Tuya connection failed, falling back to direct method:', err);
+        // Fall through to original implementation
+      }
+    }
+
+    // Fallback to original direct connection method
+    if (!this.isDeviceConnected()) {
+      try {
+        // Initialize fallback Tuya device if not already done
+        await this.initializeFallbackTuyaDevice();
+
+        // Discover the device on the network first
+        if (this.tuya) {
+          await this.tuya.find();
+          // Then connect to the device
+          await this.tuya.connect();
+          // No need to sync state - isDeviceConnected() will check tuya.isConnected()
+          this.debugLog('Connected to Tuya device (direct fallback)');
+        } else {
+          throw new Error('Tuya device fallback initialization failed');
+        }
+      } catch (err) {
+        const categorizedError = this.handleTuyaError(err as Error, 'Tuya device connection');
+
+        // Send user notification for non-recoverable errors
+        if (!categorizedError.recoverable) {
+          await this.sendCriticalNotification(
+            'Device Connection Failed',
+            categorizedError.userMessage,
+          );
+        }
+
+        // Don't throw here to allow reconnection attempts
+      }
+    }
+  }
+
+  // Note: Tuya event handlers now managed by TuyaConnectionService via ServiceCoordinator
+
+  // Note: updateCapabilityHealth now delegated to CapabilityHealthService via ServiceCoordinator
+
+  // Note: Capability health methods now delegated to CapabilityHealthService via ServiceCoordinator
+
+  private getCapabilityHealth(capability: string): boolean {
+    return this.serviceCoordinator?.getCapabilityHealth()?.isCapabilityHealthy(capability) ?? false;
+  }
+
+  // Note: Capability health categorization now handled by CapabilityHealthService via ServiceCoordinator
+
+  // Note: Flow card health management now delegated to FlowCardManagerService via ServiceCoordinator
+
+  // Note: Flow card unregistration now handled by FlowCardManagerService via ServiceCoordinator
+
+  // Note: Flow card categories now managed by FlowCardManagerService via ServiceCoordinator
+
+  // Note: Health check intervals now managed by CapabilityHealthService via ServiceCoordinator
+
+  // Note: Energy tracking methods now delegated to EnergyTrackingService via ServiceCoordinator
+
+  // Note: Capability diagnostic reporting now handled by CapabilityHealthService via ServiceCoordinator
+
+  /**
+   * Add COP measurement to SCOP calculator and update seasonal performance
+   */
+  private async addCOPMeasurementToSCOP(copResult: COPCalculationResult, combinedData: COPDataSources): Promise<void> {
+    if (!this.scopCalculator || !this.hasCapability('hp_scop')) {
+      return;
+    }
+
+    try {
+      // Map COP calculation method to SCOP-compatible method
+      const getSCOPMethod = (method: COPCalculationResult['method']): COPMeasurement['method'] => {
+        switch (method) {
+          case 'power_estimation':
+            return 'power_module'; // Map power estimation to power module
+          case 'insufficient_data':
+            return 'temperature_difference'; // Fallback to basic method
+          default:
+            return method as COPMeasurement['method'];
+        }
+      };
+
+      // Create SCOP measurement from COP result
+      const scopMeasurement: COPMeasurement = {
+        cop: copResult.cop,
+        method: getSCOPMethod(copResult.method),
+        timestamp: Date.now(),
+        ambientTemperature: combinedData.ambientTemperature || 10, // Default if not available
+        loadRatio: this.estimateLoadRatio(combinedData),
+        confidence: copResult.confidence,
+      };
+
+      // Add measurement to SCOP calculator
+      this.scopCalculator.addCOPMeasurement(scopMeasurement);
+
+      // Calculate current SCOP
+      const scopResult = this.scopCalculator.calculateSCOP();
+
+      if (scopResult) {
+        // Update SCOP capabilities
+        const roundedSCOP = Math.round(scopResult.scop * 10) / 10;
+        await this.setCapabilityValue('hp_scop', roundedSCOP);
+        await this.setCapabilityValue('hp_scop_quality', scopResult.dataQuality);
+
+        this.categoryLog('scop', `📊 SCOP updated: ${roundedSCOP} (confidence: ${scopResult.confidence}, coverage: ${Math.round(scopResult.seasonalCoverage * 100)}%)`);
+      } else {
+        // Update status to show insufficient data with localized message
+        const insufficientStatus = this.getSCOPStatusMessage('insufficient_data');
+        await this.setCapabilityValue('hp_scop_quality', insufficientStatus);
+        this.categoryLog('scop', '📊 SCOP: Insufficient seasonal data for calculation');
+      }
+    } catch (error) {
+      this.error('Failed to add COP measurement to SCOP calculator:', error);
+    }
+  }
+
+  /**
+   * Estimate load ratio based on current system conditions
+   */
+  private estimateLoadRatio(data: COPDataSources): number {
+    // Simple load ratio estimation based on compressor frequency and ambient conditions
+    if (data.compressorFrequency && data.compressorFrequency > 0) {
+      const maxFrequency = 120; // Typical max compressor frequency
+      const baseLoadRatio = Math.min(data.compressorFrequency / maxFrequency, 1.0);
+
+      // Adjust for ambient temperature (colder = higher load)
+      if (data.ambientTemperature !== undefined) {
+        let tempAdjustment = 0;
+        if (data.ambientTemperature < 0) {
+          tempAdjustment = 0.2;
+        } else if (data.ambientTemperature < 5) {
+          tempAdjustment = 0.1;
+        }
+        return Math.min(baseLoadRatio + tempAdjustment, 1.0);
+      }
+
+      return baseLoadRatio;
+    }
+
+    // Default load ratio if no frequency data
+    return 0.5;
+  }
+
+  /**
+   * Add COP measurement to rolling COP calculator
+   */
+  private async addCOPMeasurementToRolling(copResult: COPCalculationResult, combinedData: COPDataSources): Promise<void> {
+    if (!this.rollingCOPCalculator) {
+      return;
+    }
+
+    try {
+      // Guard: skip invalid COP values (sensor error, not an idle period)
+      if (!copResult.cop || copResult.cop <= 0 || !Number.isFinite(copResult.cop)) {
+        this.categoryLog('cop', '⚠️ Rolling COP: Skipping sample — invalid COP value', copResult.cop);
+        return;
+      }
+
+      // Create rolling COP data point
+      const dataPoint: COPDataPoint = {
+        timestamp: Date.now(),
+        cop: copResult.cop,
+        method: copResult.method,
+        confidence: copResult.confidence,
+        electricalPower: combinedData.electricalPower,
+        thermalOutput: copResult.calculationDetails?.thermalOutput,
+        ambientTemperature: combinedData.ambientTemperature,
+        compressorRuntime: this.getCompressorRuntime(),
+      };
+
+      // Add data point to rolling calculator
+      this.rollingCOPCalculator.addDataPoint(dataPoint);
+      const totalDataPoints = this.rollingCOPCalculator.exportData().dataPoints.length;
+      this.categoryLog('cop', '📈 Rolling COP: Added data point with COP', copResult.cop, `(total points: ${totalDataPoints})`);
+
+      // Track when we last added a COP data point for idle monitoring
+      this.lastCOPDataPointTime = Date.now();
+
+      // Update rolling COP capabilities (every 5 minutes to avoid excessive updates)
+      const now = Date.now();
+      if (now - this.lastRollingCOPUpdate >= 5 * 60 * 1000) { // 5 minutes
+        this.categoryLog('cop', '🔄 Updating rolling COP capabilities (5 minute interval reached)');
+        await this.updateRollingCOPCapabilities();
+        this.lastRollingCOPUpdate = now;
+      } else {
+        const timeUntilUpdate = Math.round((5 * 60 * 1000 - (now - this.lastRollingCOPUpdate)) / 1000);
+        this.categoryLog('cop', `⏳ Next rolling COP update in ${timeUntilUpdate} seconds`);
+      }
+    } catch (error) {
+      this.error('Failed to add COP measurement to rolling calculator:', error);
+    }
+  }
+
+  /**
+   * Force refresh of trend capability with translation - for debugging
+   */
+  public async forceRefreshTrendCapability(): Promise<void> {
+    try {
+      if (!this.hasCapability('hp_cop_trend')) {
+        this.categoryLog('cop', '⚠️ hp_cop_trend capability not available');
+        return;
+      }
+
+      const trendAnalysis = this.rollingCOPCalculator?.getTrendAnalysis(24);
+      if (trendAnalysis) {
+        const translatedDescription = this.homey.__(`trend_descriptions.${trendAnalysis.trendKey}`);
+        this.categoryLog('cop', '🔄 Force refreshing trend capability:');
+        this.categoryLog('cop', '  - trendKey:', trendAnalysis.trendKey);
+        this.categoryLog('cop', '  - translated:', translatedDescription);
+        this.categoryLog('cop', '  - fallback test (stable):', this.homey.__('trend_descriptions.stable'));
+
+        await this.setCapabilityValue('hp_cop_trend', translatedDescription);
+        this.categoryLog('cop', '✅ Trend capability force refreshed');
+      } else {
+        // Set a test translation to verify the system works
+        const testTranslation = this.homey.__('trend_descriptions.stable');
+        this.categoryLog('cop', '🧪 Setting test translation:', testTranslation);
+        this.categoryLog('cop', '🧪 Direct translation test:', this.homey.__('trend_descriptions.stable'));
+        this.categoryLog('cop', '🧪 All available keys check:', {
+          stable: this.homey.__('trend_descriptions.stable'),
+          strong_improvement: this.homey.__('trend_descriptions.strong_improvement'),
+          moderate_decline: this.homey.__('trend_descriptions.moderate_decline'),
+        });
+        await this.setCapabilityValue('hp_cop_trend', testTranslation);
+      }
+    } catch (error) {
+      this.error('Failed to force refresh trend capability:', error);
+    }
+  }
+
+  /**
+   * Update rolling COP capabilities with latest calculations
+   */
+  private async updateRollingCOPCapabilities(): Promise<void> {
+    if (!this.rollingCOPCalculator) {
+      return;
+    }
+
+    try {
+      // Use idle-aware calculation for daily COP
+      const dailyCOP = this.rollingCOPCalculator.getDailyCOPWithIdleAwareness?.()
+        || this.rollingCOPCalculator.getDailyCOP();
+
+      // Get diagnostic info for better logging
+      const diagnostics = this.rollingCOPCalculator.getDiagnosticInfo?.();
+
+      this.categoryLog('cop', `📅 Daily COP calculation result: ${dailyCOP ? `${dailyCOP.averageCOP} (${dailyCOP.dataPoints} points)` : 'null/undefined'}`);
+
+      if (diagnostics) {
+        this.categoryLog('cop', `📊 COP Diagnostics: ${diagnostics.dataPointsInWindow} points in window, ${(diagnostics.idleRatio * 100).toFixed(1)}% idle, data age: ${diagnostics.dataFreshness}h`);
+      }
+
+      if (dailyCOP && this.hasCapability('hp_cop_daily')) {
+        await this.setCapabilityValue('hp_cop_daily', dailyCOP.averageCOP);
+        this.categoryLog('cop', '📅 Daily COP updated:', dailyCOP.averageCOP, `(${dailyCOP.dataPoints} points, ${dailyCOP.confidenceLevel} confidence)`);
+
+        // Trigger daily COP efficiency flow cards (fire-and-forget)
+        this.triggerDailyCOPFlowCards(dailyCOP).catch((err) => {
+          this.error('Failed to trigger daily COP flow cards:', err);
+        });
+      } else if (!dailyCOP) {
+        // Explicitly set to null when no meaningful data (mostly idle or stale)
+        if (this.hasCapability('hp_cop_daily')) {
+          await this.setCapabilityValue('hp_cop_daily', null);
+        }
+
+        const reason = diagnostics
+          ? `idle ratio: ${(diagnostics.idleRatio * 100).toFixed(1)}%, data age: ${diagnostics.dataFreshness.toFixed(1)}h`
+          : 'no data points in rolling window';
+        this.categoryLog('cop', `⚠️ Daily COP set to null - ${reason}`);
+      } else if (!this.hasCapability('hp_cop_daily')) {
+        this.categoryLog('cop', '⚠️ Daily COP capability not available');
+      }
+
+      // Calculate weekly COP
+      const weeklyCOP = this.rollingCOPCalculator.getWeeklyCOP();
+      if (weeklyCOP && this.hasCapability('hp_cop_weekly')) {
+        await this.setCapabilityValue('hp_cop_weekly', weeklyCOP.averageCOP);
+        this.categoryLog('cop', '📊 Weekly COP updated:', weeklyCOP.averageCOP, `(${weeklyCOP.dataPoints} points, ${weeklyCOP.confidenceLevel} confidence)`);
+      }
+
+      // Calculate monthly COP
+      const monthlyCOP = this.rollingCOPCalculator.getMonthlyCOP();
+      if (monthlyCOP && this.hasCapability('hp_cop_monthly')) {
+        await this.setCapabilityValue('hp_cop_monthly', monthlyCOP.averageCOP);
+        this.categoryLog('cop', '📅 Monthly COP updated:', monthlyCOP.averageCOP, `(${monthlyCOP.dataPoints} points, ${monthlyCOP.confidenceLevel} confidence)`);
+      }
+
+      // Check and trigger daily/monthly COP change flow cards (v1.0.8)
+      const dailyValue = dailyCOP?.averageCOP || 0;
+      const monthlyValue = monthlyCOP?.averageCOP || 0;
+      if (dailyValue > 0 && monthlyValue > 0) {
+        // Call through the service method (non-blocking)
+        // Note: This is a workaround since rollingCOPCalculator already has device reference
+        // In v1.0.9+, consider refactoring to use event emitter pattern
+        if (this.rollingCOPCalculator) {
+          (this.rollingCOPCalculator as unknown as {
+            checkAndTriggerCOPChanges?: (daily: number, monthly: number) => Promise<void>;
+          }).checkAndTriggerCOPChanges?.(dailyValue, monthlyValue)?.catch((err) => {
+            this.error('Failed to trigger COP change checks:', err);
+          });
+        }
+      }
+
+      // Update trend analysis
+      const trendAnalysis = this.rollingCOPCalculator.getTrendAnalysis(24);
+      if (trendAnalysis && this.hasCapability('hp_cop_trend')) {
+        // Translate the trend description using the device's translation system
+        const translatedDescription = this.homey.__(`trend_descriptions.${trendAnalysis.trendKey}`);
+
+        // Debug logging to help troubleshoot internationalization
+        this.categoryLog('cop', '🔍 Trend Analysis Debug:');
+        this.categoryLog('cop', '  - trendKey:', trendAnalysis.trendKey);
+        this.categoryLog('cop', '  - translation result:', translatedDescription);
+        this.categoryLog('cop', '  - current locale:', this.homey.i18n.getLanguage());
+
+        await this.setCapabilityValue('hp_cop_trend', translatedDescription);
+        this.categoryLog('cop', '📈 COP Trend updated:', translatedDescription, `(${trendAnalysis.strength.toFixed(3)} strength)`);
+
+        // Trigger trend flow cards (fire-and-forget to prevent blocking)
+        this.triggerCOPTrendFlowCards({ ...trendAnalysis, description: translatedDescription }, dailyCOP).catch((err) => {
+          this.error('Failed to trigger COP trend flow cards:', err);
+        });
+      }
+    } catch (error) {
+      this.error('Failed to update rolling COP capabilities:', error);
+    }
+  }
+
+  /**
+   * Update defrost_active_power capability based on defrost state and external power
+   * Shows external power value when defrosting is active, 0 when inactive
+   */
+  async updateDefrostActivePower(): Promise<void> {
+    if (!this.hasCapability('defrost_active_power')) {
+      return;
+    }
+
+    try {
+      const isDefrosting = this.getCapabilityValue('hp_state_defrost_state') || false;
+      const externalPower = this.getCapabilityValue('hp_external_power');
+
+      if (isDefrosting && externalPower !== null && externalPower !== undefined) {
+        // Defrost active: show current external power
+        await this.setCapabilityValue('defrost_active_power', externalPower);
+        this.logger.debug(`🧊⚡ Defrost active power updated: ${externalPower}W`);
+      } else {
+        // Defrost inactive or no external power data: show 0
+        await this.setCapabilityValue('defrost_active_power', 0);
+      }
+    } catch (error) {
+      this.error('Failed to update defrost_active_power:', error);
+    }
+  }
+
+  /**
+   * Trigger daily COP efficiency flow cards
+   */
+  private async triggerDailyCOPFlowCards(dailyCOP: RollingCOPResult): Promise<void> {
+    // Check for threshold crossing triggers (simplified - would need to store previous values)
+    // This is a basic implementation - could be enhanced with threshold storage
+    if (this.hasCapability('hp_cop_daily')) {
+      const tokens = {
+        current_daily_cop: dailyCOP.averageCOP,
+        threshold_cop: 3.0, // Example threshold - would be configurable
+        data_points: dailyCOP.dataPoints,
+        confidence_level: dailyCOP.confidenceLevel,
+      };
+
+      // Note: Actual threshold comparison would be done in flow card listener
+      this.categoryLog('cop', '📅 Daily COP flow tokens ready:', tokens);
+    }
+  }
+
+  /**
+   * Trigger COP trend flow cards
+   */
+  private async triggerCOPTrendFlowCards(trendAnalysis: { trend: string; strength: number; description: string }, dailyCOP: RollingCOPResult | null): Promise<void> {
+    if (trendAnalysis.strength > 0.15) { // Only trigger for significant trends
+      const tokens = {
+        trend_direction: trendAnalysis.trend,
+        trend_strength: trendAnalysis.strength,
+        trend_description: trendAnalysis.description,
+        current_daily_cop: dailyCOP?.averageCOP || 0,
+      };
+
+      // Fire-and-forget to prevent blocking
+      this.triggerFlowCard('cop_trend_detected', tokens).catch((err) => {
+        this.error('Failed to trigger cop_trend_detected:', err);
+      });
+      this.categoryLog('cop', '📈 COP trend flow card triggered:', tokens);
+    }
+  }
+
+  /**
+   * Get current compressor runtime with enhanced tracking
+   */
+  private getCompressorRuntime(): number {
+    const currentState = this.getCapabilityValue('hp_state_compressor_state');
+    const now = Date.now();
+
+    // Track state changes for better runtime calculation
+    if (this.compressorStateHistory.length === 0
+      || this.compressorStateHistory[this.compressorStateHistory.length - 1].running !== currentState) {
+      this.compressorStateHistory.push({ timestamp: now, running: currentState });
+
+      // Keep only last 48 hours of state history
+      const cutoff = now - (48 * 60 * 60 * 1000);
+      this.compressorStateHistory = this.compressorStateHistory.filter((entry) => entry.timestamp >= cutoff);
+    }
+
+    // Calculate actual runtime in the last period (30 minutes for COP calculation)
+    const periodStart = now - (30 * 60 * 1000); // 30 minutes ago
+    let runtimeMinutes = 0;
+
+    for (let i = this.compressorStateHistory.length - 1; i >= 0; i--) {
+      const entry = this.compressorStateHistory[i];
+      if (entry.timestamp < periodStart) break;
+
+      const nextEntry = this.compressorStateHistory[i + 1];
+      const periodEnd = nextEntry ? nextEntry.timestamp : now;
+      const duration = (periodEnd - Math.max(entry.timestamp, periodStart)) / (1000 * 60);
+
+      if (entry.running && duration > 0) {
+        runtimeMinutes += duration;
+      }
+    }
+
+    return Math.round(Math.max(0, Math.min(30, runtimeMinutes))); // Clamp between 0 and 30 minutes
+  }
+
+  /**
+   * Start idle period monitoring
+   */
+  private startIdleMonitoring(): void {
+    try {
+      // Check every 30 minutes if we should add idle data points
+      const interval = this.homey.setInterval(async () => {
+        try {
+          await this.handleIdlePeriodTracking();
+        } catch (error) {
+          this.error('Error during idle period tracking:', error);
+        }
+      }, 30 * 60 * 1000); // 30 minutes
+
+      if (interval) {
+        this.idleCheckInterval = interval;
+        this.log('Started idle period monitoring (30 minute intervals)');
+      } else {
+        this.idleCheckInterval = null;
+        this.error('Failed to start idle monitoring interval');
+      }
+    } catch (err) {
+      this.idleCheckInterval = null;
+      this.error('Error starting idle monitoring interval:', err);
+    }
+  }
+
+  /**
+   * Stop idle period monitoring
+   */
+  private stopIdleMonitoring(): void {
+    if (this.idleCheckInterval) {
+      this.homey.clearInterval(this.idleCheckInterval);
+      this.idleCheckInterval = null;
+      this.log('Stopped idle period monitoring');
+    }
+  }
+
+  /**
+   * Handle idle period tracking and add zero-COP data points when needed
+   */
+  private async handleIdlePeriodTracking(): Promise<void> {
+    if (!this.rollingCOPCalculator) return;
+
+    const now = Date.now();
+    const compressorState = this.getCapabilityValue('hp_state_compressor_state');
+    const timeSinceLastCOP = this.lastCOPDataPointTime > 0 ? now - this.lastCOPDataPointTime : 0;
+
+    // If compressor is idle for > 1 hour AND no COP data added recently, add idle data point
+    if (!compressorState && timeSinceLastCOP > 60 * 60 * 1000) { // 1 hour
+      const idleDataPoint: COPDataPoint = {
+        timestamp: now,
+        cop: 0, // Zero COP during idle
+        method: 'idle_period',
+        confidence: 'high', // High confidence that COP is 0 when idle
+        compressorRuntime: 0,
+        electricalPower: this.getIdlePowerConsumption(),
+        isIdlePeriod: true, // Mark as idle period
+      };
+
+      this.rollingCOPCalculator.addDataPoint(idleDataPoint);
+      this.lastCOPDataPointTime = now; // Update tracking time
+      this.categoryLog('cop', '🕒 Added idle period data point (COP: 0) - compressor idle for > 1 hour');
+
+      // Update rolling COP capabilities to reflect the idle state
+      await this.updateRollingCOPCapabilities();
+    }
+  }
+
+  /**
+   * Get idle power consumption (standby power)
+   */
+  private getIdlePowerConsumption(): number {
+    // Get actual standby power or estimate (pumps, controls, etc.)
+    const powerValue = this.getCapabilityValue('measure_power');
+
+    // If we have a power reading and it's low (< 500W), use it
+    // Otherwise estimate typical standby consumption
+    if (powerValue && powerValue < 500) {
+      return powerValue;
+    }
+
+    // Estimate standby power: pumps (20W) + controls (10W) + electronics (20W)
+    return 50; // 50W estimated standby
+  }
+
+  /**
+   * Initialize rolling COP calculator
+   */
+  private async initializeRollingCOP(): Promise<void> {
+    try {
+      // Initialize with default config - could be made configurable
+      this.rollingCOPCalculator = new RollingCOPCalculator({
+        timeWindow: 24 * 60, // 24 hours
+        minDataPoints: 12, // Minimum 12 points (6 hours worth)
+        weightingMethod: 'runtime_weighted',
+        trendSensitivity: 0.15, // 15% change for trend detection
+        logger: (message: string, ...args: unknown[]) => this.log(message, ...args),
+        device: {
+          // Device reference for flow card triggers (v1.0.8)
+          triggerFlowCard: (cardId: string, tokens: Record<string, unknown>) => this.triggerFlowCard(cardId, tokens),
+          getCapabilityValue: (capability: string) => this.getCapabilityValue(capability),
+        },
+      });
+
+      // Try to restore data from settings
+      await this.restoreRollingCOPData();
+
+      this.categoryLog('cop', '📈 Rolling COP calculator initialized');
+    } catch (error) {
+      this.error('Failed to initialize rolling COP calculator:', error);
+    }
+  }
+
+  /**
+   * Restore rolling COP data from device store (unbounded, persistent storage)
+   */
+  private async restoreRollingCOPData(): Promise<void> {
+    try {
+      const savedData = await this.getStoreValue('rolling_cop_data');
+      if (savedData && this.rollingCOPCalculator) {
+        this.rollingCOPCalculator.importData(savedData);
+        this.categoryLog('cop', '📈 Rolling COP data restored from device store');
+      }
+    } catch (error) {
+      this.categoryLog('cop', 'No rolling COP data to restore:', error);
+    }
+  }
+
+  /**
+   * Save rolling COP data to device store (unbounded, persistent storage)
+   */
+  private async saveRollingCOPData(): Promise<void> {
+    try {
+      if (this.rollingCOPCalculator) {
+        const dataToSave = this.rollingCOPCalculator.exportData();
+        await this.setStoreValue('rolling_cop_data', dataToSave);
+        this.categoryLog('cop', '📈 Rolling COP data saved to device store');
+      }
+    } catch (error) {
+      this.error('Failed to save rolling COP data:', error);
+    }
+  }
+
+  /**
+   * Restore SCOP seasonal data from device store (v1.0.31+, unbounded storage)
+   */
+  private async restoreSCOPData(): Promise<void> {
+    try {
+      const savedData = await this.getStoreValue('scop_daily_data');
+      if (savedData && this.scopCalculator) {
+        this.scopCalculator.importData(savedData);
+        this.categoryLog('scop', '🌤️ SCOP seasonal data restored from device store');
+      }
+    } catch (error) {
+      this.categoryLog('scop', 'No SCOP data to restore:', error);
+    }
+  }
+
+  /**
+   * Save SCOP seasonal data to device store (v1.0.31+, unbounded storage)
+   */
+  private async saveSCOPData(): Promise<void> {
+    try {
+      if (this.scopCalculator) {
+        const dataToSave = this.scopCalculator.exportData();
+        await this.setStoreValue('scop_daily_data', dataToSave);
+        this.categoryLog('scop', '🌤️ SCOP seasonal data saved to device store');
+      }
+    } catch (error) {
+      this.error('Failed to save SCOP seasonal data:', error);
+    }
+  }
+
+  /**
+   * Simple direct external device access methods
+   */
+
+  /**
+   * Get external power data from capability (fed via flow card)
+   */
+  private async getExternalPowerData(): Promise<number | null> {
+    // Check if we have external power data from flow card
+    if (this.hasCapability('hp_external_power')) {
+      const value = this.getCapabilityValue('hp_external_power');
+      if (typeof value === 'number' && !Number.isNaN(value) && value > 0) {
+        this.categoryLog('cop', `📊 Using external power data: ${value}W (from flow card)`);
+        return value;
+      }
+    }
+
+    this.categoryLog('cop', '📊 No external power data available - use "Send power data to heat pump" flow card to provide external power');
+    return null;
+  }
+
+  /**
+   * Get external flow rate data from flow card input
+   * Note: External flow data must be provided via Advanced Flow using the
+   * "Send Flow Rate to heat pump for COP calculation" action card
+   */
+  private async getExternalFlowData(): Promise<number | null> {
+    if (this.hasCapability('hp_external_flow')) {
+      const value = this.getCapabilityValue('hp_external_flow');
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        this.debugLog(`💧 External flow data: ${value}L/min (from flow card)`);
+        return value;
+      }
+    }
+    this.categoryLog('energy', '💧 No external flow data - use "Send Flow Rate" flow card to provide data');
+    return null;
+  }
+
+  /**
+   * Get external ambient temperature data from flow card input
+   * Note: External ambient data must be provided via Advanced Flow using the
+   * "Send Ambient Temperature to heat pump for COP calculation" action card
+   */
+  private async getExternalAmbientData(): Promise<number | null> {
+    if (this.hasCapability('hp_external_ambient')) {
+      const value = this.getCapabilityValue('hp_external_ambient');
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        this.debugLog(`🌡️ External ambient data: ${value}°C (from flow card)`);
+        return value;
+      }
+    }
+    this.debugLog('🌡️ No external ambient data - use "Send Ambient Temperature" flow card to provide data');
+    return null;
+  }
+
+  /**
+   * Get all external data in a simple, efficient way
+   */
+  private async getExternalDeviceData(): Promise<{
+    electricalPower?: number;
+    waterFlowRate?: number;
+    ambientTemperature?: number;
+  }> {
+    const externalData: { electricalPower?: number; waterFlowRate?: number; ambientTemperature?: number } = {};
+
+    // Get external power data
+    const powerData = await this.getExternalPowerData();
+    if (powerData !== null) {
+      externalData.electricalPower = powerData;
+    }
+
+    // Get external flow data
+    const flowData = await this.getExternalFlowData();
+    if (flowData !== null) {
+      externalData.waterFlowRate = flowData;
+    }
+
+    // Get external ambient data
+    const ambientData = await this.getExternalAmbientData();
+    if (ambientData !== null) {
+      externalData.ambientTemperature = ambientData;
+    }
+
+    return externalData;
+  }
+
+  /**
+   * Get localized SCOP status message
+   */
+  private getSCOPStatusMessage(statusKey: string): string {
+    const i18nKey = `scop_status.${statusKey}`;
+    try {
+      return this.homey.__(i18nKey) || statusKey;
+    } catch (error) {
+      // Fallback to English if translation fails
+      const fallbackMessages: Record<string, string> = {
+        initializing: 'Initializing seasonal data collection...',
+        collecting: 'Collecting seasonal performance data',
+        insufficient_data: 'Insufficient seasonal data (need 7+ days)',
+        calculating: 'Calculating seasonal performance...',
+      };
+      return fallbackMessages[statusKey] || statusKey;
+    }
+  }
+
+  /**
+   * Initialize COP calculation system
+   */
+  private async initializeCOP(): Promise<void> {
+    try {
+      // Initialize SCOP calculator for seasonal performance tracking
+      this.scopCalculator = new SCOPCalculator(this.homey);
+      this.categoryLog('scop', 'SCOP calculator initialized');
+
+      // Try to restore seasonal data from settings (v1.0.31+)
+      await this.restoreSCOPData();
+
+      // Initialize SCOP quality capability with localized message
+      if (this.hasCapability('hp_scop_quality')) {
+        const initialStatus = this.getSCOPStatusMessage('initializing');
+        await this.setCapabilityValue('hp_scop_quality', initialStatus);
+        this.categoryLog('scop', 'SCOP quality capability initialized with status message');
+      }
+
+      // Load COP settings from device settings
+      await this.loadCOPSettings();
+
+      // Check if COP capability is available
+      if (this.hasCapability('hp_cop')) {
+        // Start COP calculation interval if enabled
+        const copEnabled = this.copSettings?.enableCOP !== false; // default enabled
+        if (copEnabled) {
+          this.startCOPCalculationInterval();
+          this.startIdleMonitoring(); // Start idle period monitoring
+          // Update SCOP quality to collecting status once COP starts
+          if (this.hasCapability('hp_scop_quality')) {
+            const collectingStatus = this.getSCOPStatusMessage('collecting');
+            await this.setCapabilityValue('hp_scop_quality', collectingStatus);
+          }
+          this.categoryLog('cop', 'COP calculation system initialized and started');
+        } else {
+          // Update SCOP quality to show COP is disabled
+          if (this.hasCapability('hp_scop_quality')) {
+            const disabledMessage = this.homey.__('COP calculation disabled') || 'COP calculation disabled';
+            await this.setCapabilityValue('hp_scop_quality', disabledMessage);
+          }
+          this.categoryLog('cop', 'COP calculation disabled by settings');
+        }
+      } else {
+        this.categoryLog('cop', 'COP capability not available on device');
+      }
+
+      // Initialize SCOP updates if capability is available
+      if (this.hasCapability('hp_scop') && this.scopCalculator) {
+        this.startSCOPUpdateInterval();
+        this.categoryLog('scop', 'SCOP update system initialized');
+      }
+
+      // Initialize external power capability with default value
+      if (this.hasCapability('hp_external_power')) {
+        await this.setCapabilityValue('hp_external_power', null);
+        this.categoryLog('cop', 'External power capability initialized with default value (null W)');
+      }
+
+      // Initialize defrost active power capability with default value (0W when not defrosting)
+      if (this.hasCapability('defrost_active_power')) {
+        await this.setCapabilityValue('defrost_active_power', 0);
+        this.categoryLog('energy', 'Defrost active power capability initialized with default value (0 W)');
+      }
+
+      // v2.9.14: Restore and start 24h defrost counter tracking
+      if (this.hasCapability('hp_defrost_count_24h') || this.hasCapability('hp_defrost_minutes_24h')) {
+        await this.restoreDefrost24hHistory();
+        this.updateDefrost24hCapabilities();
+        this.startDefrost24hRefresh();
+      }
+
+      // Initialize external flow capability with default value
+      if (this.hasCapability('hp_external_flow')) {
+        await this.setCapabilityValue('hp_external_flow', null);
+        this.categoryLog('cop', 'External flow capability initialized with default value (null L/min)');
+      }
+
+      // Initialize external ambient temperature capability with default value
+      // Restore from store to survive app updates, but only when the flow card sent it recently
+      if (this.hasCapability('hp_external_ambient')) {
+        const storedOutdoorTemp = await this.getStoreValue('external_outdoor_temp');
+        const storedOutdoorTs = await this.getStoreValue('external_outdoor_temp_timestamp');
+        const restorable = storedOutdoorTemp !== null && storedOutdoorTemp !== undefined
+          && isExternalValueFresh(storedOutdoorTs, Date.now(), DeviceConstants.EXTERNAL_DATA_RESTORE_TTL_MS);
+        if (restorable) {
+          await this.setCapabilityValue('hp_external_ambient', storedOutdoorTemp);
+          this.categoryLog('cop', `External ambient capability restored from store: ${storedOutdoorTemp}°C`);
+        } else {
+          await this.setCapabilityValue('hp_external_ambient', null);
+          this.categoryLog('cop', 'External ambient capability initialized with default value (null°C)');
+        }
+      }
+
+      // Initialize external indoor temperature capability (v1.4.0 - Adaptive Control Component 1)
+      // Initialize legacy external indoor temperature capability (backwards compatibility)
+      // Restore from store to survive app updates
+      if (this.hasCapability('hp_external_indoor_temperature')) {
+        const storedIndoorTemp = await this.getStoreValue('external_indoor_temp');
+        if (storedIndoorTemp !== null && storedIndoorTemp !== undefined) {
+          await this.setCapabilityValue('hp_external_indoor_temperature', storedIndoorTemp);
+          this.log(`External indoor temperature capability (legacy) restored from store: ${storedIndoorTemp}°C`);
+        } else {
+          await this.setCapabilityValue('hp_external_indoor_temperature', null);
+          this.log('External indoor temperature capability initialized with default value (null°C)');
+        }
+      }
+
+      // Initialize indoor temperature measurement subcapability (v2.3.5 - Subcapability Architecture)
+      // This read-only capability displays actual room temperature from external sensors
+      // Restore from store to survive app updates
+      if (this.hasCapability('measure_temperature.indoor')) {
+        const storedIndoorTemp = await this.getStoreValue('external_indoor_temp');
+        if (storedIndoorTemp !== null && storedIndoorTemp !== undefined) {
+          await this.setCapabilityValue('measure_temperature.indoor', storedIndoorTemp);
+          this.log(`Indoor temperature measurement subcapability restored from store: ${storedIndoorTemp}°C`);
+        } else {
+          await this.setCapabilityValue('measure_temperature.indoor', null);
+          this.log('Indoor temperature measurement subcapability initialized with default value (null°C)');
+        }
+      }
+
+      // Initialize desired indoor temperature subcapability (v2.3.5 - Subcapability Architecture)
+      // This user-settable capability defines the target room temperature for adaptive control
+      if (this.hasCapability('target_temperature.indoor')) {
+        const currentValue = this.getCapabilityValue('target_temperature.indoor');
+        if (currentValue === null || currentValue === undefined) {
+          // Default to 20.0°C if not set (typical comfortable room temperature)
+          await this.setCapabilityValue('target_temperature.indoor', 20.0);
+          this.log('Desired indoor temperature subcapability initialized with default: 20.0°C');
+        } else {
+          this.log(`Desired indoor temperature subcapability already set: ${currentValue}°C`);
+        }
+      }
+
+      // Initialize external energy total capability with storage-aware restoration
+      if (this.hasCapability('hp_external_energy_total')) {
+        const storedExternalTotal = await this.getStoreValue('external_cumulative_energy_kwh') || 0;
+        await this.setCapabilityValue('hp_external_energy_total', storedExternalTotal);
+        this.categoryLog('cop', `External energy total capability initialized: ${storedExternalTotal} kWh ${storedExternalTotal > 0 ? '(restored from storage)' : '(starting fresh)'}`);
+      }
+
+      // Initialize external energy daily capability
+      // NOTE: Full sanity check and restore logic is in initializeEnergyTracking()
+      // This initialization only sets to 0 if not present (initializeEnergyTracking handles corruption detection)
+      if (this.hasCapability('hp_external_energy_daily')) {
+        const currentValue = this.getCapabilityValue('hp_external_energy_daily');
+        if (currentValue === null || currentValue === undefined) {
+          await this.setCapabilityValue('hp_external_energy_daily', 0);
+          this.categoryLog('cop', 'External energy daily capability initialized to 0 (will be restored by initializeEnergyTracking if valid store data exists)');
+        }
+      }
+    } catch (error) {
+      this.error('Error initializing COP system:', error);
+    }
+  }
+
+  /**
+   * Load COP settings from device settings
+   */
+  private async loadCOPSettings(): Promise<void> {
+    try {
+      const settings = this.getSettings();
+
+      this.copSettings = {
+        enableCOP: settings.cop_calculation_enabled !== false, // default true
+        calculationMethod: settings.cop_calculation_method || 'auto',
+        enableOutlierDetection: settings.cop_outlier_detection_enabled !== false, // default true
+        customOutlierThresholds: {
+          minCOP: settings.cop_min_threshold || DeviceConstants.MIN_VALID_COP,
+          maxCOP: settings.cop_max_threshold || DeviceConstants.MAX_VALID_COP,
+        },
+        externalDevices: {
+          power: {
+            deviceId: settings.external_power_device_id || '',
+            capability: settings.external_power_capability || 'measure_power',
+            enabled: !!settings.external_power_enabled,
+          },
+          flow: {
+            deviceId: settings.external_flow_device_id || '',
+            capability: settings.external_flow_capability || 'measure_water',
+            enabled: !!settings.external_flow_enabled,
+          },
+          ambient: {
+            deviceId: settings.external_ambient_device_id || '',
+            capability: settings.external_ambient_capability || 'measure_temperature',
+            enabled: !!settings.external_ambient_enabled,
+          },
+        },
+      };
+
+      this.categoryLog('cop', 'COP settings loaded:', this.copSettings);
+
+      // Debug COP capability status immediately after loading settings
+      this.debugCOPCapabilityStatus();
+    } catch (error) {
+      this.error('Error loading COP settings:', error);
+      // Set default settings on error
+      this.copSettings = {
+        enableCOP: true,
+        calculationMethod: 'auto',
+        enableOutlierDetection: true,
+        customOutlierThresholds: {
+          minCOP: DeviceConstants.MIN_VALID_COP,
+          maxCOP: DeviceConstants.MAX_VALID_COP,
+        },
+        externalDevices: {
+          power: { deviceId: '', capability: 'measure_power', enabled: false },
+          flow: { deviceId: '', capability: 'measure_water', enabled: false },
+          ambient: { deviceId: '', capability: 'measure_temperature', enabled: false },
+        },
+      };
+    }
+  }
+
+  /**
+   * Debug method to check COP capability status and configuration
+   */
+  public debugCOPCapabilityStatus(): void {
+    this.categoryLog('cop', '🔧 COP Capability Debug Status:');
+    this.categoryLog('cop', `  📋 hasCapability('hp_cop'): ${this.hasCapability('hp_cop')}`);
+    this.categoryLog('cop', `  ⚙️  cop_calculation_enabled setting: ${this.getSetting('cop_calculation_enabled')}`);
+    this.categoryLog('cop', `  🏗️  copSettings?.enableCOP: ${this.copSettings?.enableCOP}`);
+
+    // List all current capabilities
+    const allCaps = this.getCapabilities();
+    this.categoryLog('cop', `  📊 Total capabilities: ${allCaps.length}`);
+    this.categoryLog('cop', `  🔍 COP in capability list: ${allCaps.includes('hp_cop')}`);
+
+    if (process.env.DEBUG === '1') {
+      this.categoryLog('cop', `  📝 All capabilities: ${allCaps.join(', ')}`);
+    }
+
+    // Check if capability definition exists in app.json
+    try {
+      const capabilityDefinition = this.homey.manifest.capabilities?.hp_cop;
+      this.categoryLog('cop', `  📋 COP capability definition exists: ${!!capabilityDefinition}`);
+      if (capabilityDefinition) {
+        this.categoryLog('cop', `  📋 COP definition type: ${capabilityDefinition.type}`);
+      }
+    } catch (error) {
+      this.categoryLog('cop', `  ❌ Error checking capability definition: ${error}`);
+    }
+  }
+
+  /**
+   * Public method to manually trigger and debug COP calculation process
+   */
+  public async debugDailyCOPIssue(): Promise<void> {
+    this.categoryLog('cop', '🔍 === DEBUGGING DAILY COP ISSUE ===');
+
+    // Check COP calculation status
+    this.debugCOPCapabilityStatus();
+
+    // Check if the rolling calculator exists and has data
+    if (this.rollingCOPCalculator) {
+      const totalDataPoints = this.rollingCOPCalculator.exportData().dataPoints.length;
+      this.categoryLog('cop', `📊 Rolling COP calculator exists with ${totalDataPoints} data points`);
+
+      // Try to get daily COP manually
+      const dailyCOP = this.rollingCOPCalculator.getDailyCOP();
+      this.categoryLog('cop', `📅 Manual daily COP check: ${dailyCOP ? `${dailyCOP.averageCOP} (${dailyCOP.dataPoints} points)` : 'null/undefined'}`);
+    } else {
+      this.categoryLog('cop', '❌ Rolling COP calculator not initialized');
+    }
+
+    // Force a COP calculation attempt
+    this.categoryLog('cop', '🚀 Forcing COP calculation attempt...');
+    await this.calculateAndUpdateCOP();
+
+    this.categoryLog('cop', '🔍 === END DEBUG ===');
+  }
+
+  /**
+   * Public method to debug external energy accumulation
+   */
+  public async debugExternalEnergyAccumulation(): Promise<void> {
+    this.categoryLog('cop', '🔋 === DEBUGGING EXTERNAL ENERGY ACCUMULATION ===');
+
+    // Check current values
+    const currentPower = this.getCapabilityValue('hp_external_power');
+    const currentEnergy = this.getCapabilityValue('hp_external_energy_total');
+    const lastTimestamp = this.lastExternalPowerTimestamp;
+
+    this.categoryLog('cop', `📊 Current external power: ${currentPower}W`);
+    this.categoryLog('cop', `🔋 Current external energy total: ${currentEnergy?.toFixed ? currentEnergy.toFixed(6) : currentEnergy}kWh`);
+    this.categoryLog('cop', `⏱️ Last power timestamp: ${lastTimestamp ? new Date(lastTimestamp).toISOString() : 'none'}`);
+
+    // Check capabilities
+    this.categoryLog('cop', `📋 Has hp_external_power capability: ${this.hasCapability('hp_external_power')}`);
+    this.categoryLog('cop', `📋 Has hp_external_energy_total capability: ${this.hasCapability('hp_external_energy_total')}`);
+
+    // Show reset functionality
+    this.categoryLog('cop', '💡 To reset energy counter: Use device settings > Energy Management > Reset external energy total counter');
+
+    this.categoryLog('cop', '🔋 === END DEBUG ===');
+  }
+
+  /**
+   * Reset external energy total counter to zero
+   */
+  public async resetExternalEnergyTotal(): Promise<void> {
+    this.categoryLog('cop', '🔄 Resetting external energy total counter...');
+
+    try {
+      // Check if capability exists
+      if (!this.hasCapability('hp_external_energy_total')) {
+        this.categoryLog('cop', '⚠️ External energy total capability not available');
+        return;
+      }
+
+      // Reset the capability value to zero
+      await this.setCapabilityValue('hp_external_energy_total', 0);
+
+      // Reset the timestamp to start fresh accumulation
+      this.lastExternalPowerTimestamp = null;
+
+      this.categoryLog('cop', '✅ External energy total reset to 0.000000 kWh');
+      this.categoryLog('cop', '✅ Energy accumulation timestamp reset - next measurement will use default interval');
+
+      // Reset the setting back to false to prevent repeated triggers
+      this.homey.setTimeout(() => {
+        this.setSettings({ reset_external_energy_total: false })
+          .then(() => this.categoryLog('cop', '🔄 Reset setting cleared'))
+          .catch((error) => this.error('Failed to clear reset setting:', error));
+      }, 1000);
+
+    } catch (error) {
+      this.error('Failed to reset external energy total:', error);
+      throw new Error(`Failed to reset external energy total: ${error}`);
+    }
+  }
+
+  /**
+   * Reset external daily energy counter to zero
+   */
+  public async resetExternalEnergyDaily(): Promise<void> {
+    this.log('🔄 Resetting external energy daily counter...');
+
+    try {
+      // Check if capability exists
+      if (!this.hasCapability('hp_external_energy_daily')) {
+        this.log('⚠️ External energy daily capability not available');
+        return;
+      }
+
+      // Reset the capability value to zero
+      await this.setCapabilityValue('hp_external_energy_daily', 0);
+
+      // Reset the stored value for persistence
+      await this.setStoreValue('external_daily_consumption_kwh', 0);
+
+      this.log('✅ External energy daily reset to 0.000 kWh');
+
+      // Reset the setting back to false to prevent repeated triggers
+      this.homey.setTimeout(() => {
+        this.setSettings({ reset_external_energy_daily: false })
+          .then(() => this.log('🔄 Daily reset setting cleared'))
+          .catch((error) => this.error('Failed to clear daily reset setting:', error));
+      }, 1000);
+
+    } catch (error) {
+      this.error('Failed to reset external energy daily:', error);
+      throw new Error(`Failed to reset external energy daily: ${error}`);
+    }
+  }
+
+  /**
+   * Clear the external outdoor temperature when no flow card sent it within the TTL (1 hour),
+   * so the building model, COP and insights fall back to the heat pump's own ambient sensor.
+   * Uses the stored timestamp, so the age also counts across app restarts.
+   */
+  private async expireStaleExternalAmbient(): Promise<void> {
+    if (!this.hasCapability('hp_external_ambient')) return;
+    const value = this.getCapabilityValue('hp_external_ambient');
+    if (value === null || value === undefined) return;
+    const timestamp = this.getStoreValue('external_outdoor_temp_timestamp');
+    if (isExternalValueFresh(timestamp, Date.now(), DeviceConstants.EXTERNAL_DATA_TTL_MS)) return;
+    await this.setCapabilityValue('hp_external_ambient', null);
+    this.logger.info('External ambient expired (TTL 1h), building model/COP revert to the heat pump ambient sensor');
+  }
+
+  /**
+   * Start COP calculation interval
+   */
+  private startCOPCalculationInterval(): void {
+    try {
+      const interval = this.homey.setInterval(async () => {
+        try {
+          await this.expireStaleExternalAmbient();
+          await this.calculateAndUpdateCOP();
+        } catch (error) {
+          this.error('Error during COP calculation:', error);
+        }
+      }, DeviceConstants.COP_CALCULATION_INTERVAL_MS);
+
+      if (interval) {
+        this.copCalculationInterval = interval;
+        this.categoryLog('cop', 'Started COP calculation interval');
+      } else {
+        this.copCalculationInterval = null;
+        this.error('Failed to start COP calculation interval: setInterval returned undefined');
+      }
+    } catch (err) {
+      this.copCalculationInterval = null;
+      this.error('Error starting COP calculation interval:', err);
+    }
+  }
+
+  /**
+   * Stop COP calculation interval
+   */
+  private stopCOPCalculationInterval(): void {
+    if (this.copCalculationInterval) {
+      clearInterval(this.copCalculationInterval);
+      this.copCalculationInterval = null;
+      this.categoryLog('cop', 'Stopped COP calculation interval');
+    }
+  }
+
+  // ─── Rolling 24h defrost statistics (v2.9.14) ─────────────────────────────
+
+  /**
+   * Record a completed defrost cycle and update the 24h capability counters.
+   * Called from DPS 33 false-transition handler in device.ts.
+   */
+  private recordDefrostEvent(durationSec: number): void {
+    const now = Date.now();
+    const cutoff = now - 24 * 60 * 60 * 1000;
+
+    this.defrostHistory.push({ timestamp: now, durationSec });
+    // Trim events older than 24h
+    this.defrostHistory = this.defrostHistory.filter((e) => e.timestamp >= cutoff);
+
+    // Persist so the counter survives app restarts/updates
+    this.setStoreValue('defrost_24h_history', this.defrostHistory).catch((err) => {
+      this.error('Failed to persist defrost_24h_history:', err);
+    });
+
+    this.updateDefrost24hCapabilities();
+  }
+
+  /**
+   * Recompute and write hp_defrost_count_24h and hp_defrost_minutes_24h
+   * from the rolling defrostHistory. Safe to call at any time (no side effects).
+   */
+  private updateDefrost24hCapabilities(): void {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recent = this.defrostHistory.filter((e) => e.timestamp >= cutoff);
+    const count = recent.length;
+    const totalMinutes = Math.round(
+      recent.reduce((sum, e) => sum + e.durationSec / 60, 0) * 10,
+    ) / 10;
+
+    if (this.hasCapability('hp_defrost_count_24h')) {
+      this.setCapabilityValue('hp_defrost_count_24h', count).catch((err) => {
+        this.error('Failed to update hp_defrost_count_24h:', err);
+      });
+    }
+    if (this.hasCapability('hp_defrost_minutes_24h')) {
+      this.setCapabilityValue('hp_defrost_minutes_24h', totalMinutes).catch((err) => {
+        this.error('Failed to update hp_defrost_minutes_24h:', err);
+      });
+    }
+  }
+
+  /**
+   * Start periodic refresh of 24h defrost counters so they decay correctly
+   * even when no new defrost cycles occur.
+   */
+  private startDefrost24hRefresh(): void {
+    const interval = this.homey.setInterval(() => {
+      // Trim stale events and refresh capabilities (handles natural decay)
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      this.defrostHistory = this.defrostHistory.filter((e) => e.timestamp >= cutoff);
+      this.updateDefrost24hCapabilities();
+    }, 30 * 60 * 1000); // every 30 minutes
+
+    if (interval) {
+      this.defrost24hRefreshInterval = interval;
+    } else {
+      this.error('Failed to start defrost 24h refresh interval');
+    }
+  }
+
+  /**
+   * Stop periodic 24h defrost refresh interval.
+   */
+  private stopDefrost24hRefresh(): void {
+    if (this.defrost24hRefreshInterval) {
+      this.homey.clearInterval(this.defrost24hRefreshInterval);
+      this.defrost24hRefreshInterval = null;
+    }
+  }
+
+  /**
+   * Restore defrost history from persistent store after app restart/update.
+   * Filters out events older than 24h before restoring.
+   */
+  private async restoreDefrost24hHistory(): Promise<void> {
+    try {
+      const saved = await this.getStoreValue('defrost_24h_history') as
+        | { timestamp: number; durationSec: number }[]
+        | null;
+      if (Array.isArray(saved) && saved.length > 0) {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        this.defrostHistory = saved.filter((e) => e.timestamp >= cutoff);
+        this.log(`Restored ${this.defrostHistory.length} defrost events from store`);
+      }
+    } catch (err) {
+      this.error('Failed to restore defrost_24h_history:', err);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start SCOP update interval for daily/periodic SCOP recalculation
+   */
+  private startSCOPUpdateInterval(): void {
+    try {
+      const interval = this.homey.setInterval(async () => {
+        try {
+          await this.updateSCOPCapabilities();
+        } catch (error) {
+          this.error('Error during SCOP update:', error);
+        }
+      }, DeviceConstants.SCOP_CALCULATION_INTERVAL_MS);
+
+      if (interval) {
+        this.scopUpdateInterval = interval;
+        this.log('Started SCOP update interval (daily)');
+      } else {
+        this.error('Failed to start SCOP update interval: setInterval returned undefined');
+      }
+    } catch (err) {
+      this.error('Error starting SCOP update interval:', err);
+    }
+  }
+
+  /**
+   * Stop SCOP update interval
+   */
+  private stopSCOPUpdateInterval(): void {
+    if (this.scopUpdateInterval) {
+      clearInterval(this.scopUpdateInterval);
+      this.scopUpdateInterval = null;
+      this.log('Stopped SCOP update interval');
+    }
+  }
+
+  /**
+   * Update SCOP capabilities with latest seasonal calculation
+   */
+  private async updateSCOPCapabilities(): Promise<void> {
+    if (!this.scopCalculator || !this.hasCapability('hp_scop')) {
+      return;
+    }
+
+    try {
+      const scopResult = this.scopCalculator.calculateSCOP();
+
+      if (scopResult) {
+        const roundedSCOP = Math.round(scopResult.scop * 10) / 10;
+        await this.setCapabilityValue('hp_scop', roundedSCOP);
+        await this.setCapabilityValue('hp_scop_quality', scopResult.dataQuality);
+
+        this.categoryLog('scop', `📊 SCOP daily update: ${roundedSCOP} (confidence: ${scopResult.confidence}, ${Math.round(scopResult.seasonalCoverage * 100)}% coverage)`);
+
+        // Log seasonal summary in debug mode
+        this.debugLog('SCOP seasonal summary:', this.scopCalculator.getSeasonalSummary());
+      } else {
+        // Update status to show insufficient data with localized message
+        const insufficientStatus = this.getSCOPStatusMessage('insufficient_data');
+        await this.setCapabilityValue('hp_scop_quality', insufficientStatus);
+        this.debugLog('📊 SCOP daily update: Insufficient data for calculation');
+      }
+    } catch (error) {
+      this.error('Failed to update SCOP capabilities:', error);
+    }
+  }
+
+  /**
+   * Calculate and update COP value with enhanced debugging
+   */
+  private async calculateAndUpdateCOP(): Promise<void> {
+    // Enhanced debugging for daily COP investigation
+    const hasCapability = this.hasCapability('hp_cop');
+    const copEnabled = this.copSettings?.enableCOP;
+
+    this.categoryLog('cop', '🔍 COP calculation attempt:');
+    this.categoryLog('cop', `  📋 hasCapability('hp_cop'): ${hasCapability}`);
+    this.categoryLog('cop', `  ⚙️  copSettings?.enableCOP: ${copEnabled}`);
+    this.categoryLog('cop', `  🎯 Will calculate COP: ${hasCapability && copEnabled}`);
+
+    if (!hasCapability || !copEnabled) {
+      this.categoryLog('cop', '❌ COP calculation skipped - capability not available or disabled');
+      this.debugCOPCapabilityStatus();
+      return;
+    }
+
+    this.categoryLog('cop', '✅ Proceeding with COP calculation...');
+
+    try {
+      // Gather data sources from device capabilities
+      const deviceData = this.gatherDeviceDataSources();
+      this.categoryLog('cop', 'Device data sources gathered:', deviceData);
+
+      // Get external device data via direct access if configured
+      let externalData = {};
+      const externalDataSources: string[] = [];
+
+      this.categoryLog('cop', '🔍 Checking external device configurations...');
+
+      // Use simplified direct device access
+      const externalDeviceData = await this.getExternalDeviceData();
+
+      if (externalDeviceData.electricalPower !== null) {
+        externalData = { ...externalData, electricalPower: externalDeviceData.electricalPower };
+        externalDataSources.push('power(direct)');
+      }
+
+      if (externalDeviceData.waterFlowRate !== null) {
+        externalData = { ...externalData, waterFlowRate: externalDeviceData.waterFlowRate };
+        externalDataSources.push('flow(direct)');
+      }
+
+      if (externalDeviceData.ambientTemperature !== null) {
+        externalData = { ...externalData, ambientTemperature: externalDeviceData.ambientTemperature };
+        externalDataSources.push('ambient(direct)');
+      }
+
+      this.categoryLog('cop', 'External data sources:', externalDataSources.length > 0 ? externalDataSources.join(', ') : 'none');
+      this.categoryLog('cop', 'External data retrieved via direct access:', externalData);
+
+      // Combine device and external data (external data takes precedence, unless undefined)
+      const combinedData = {
+        ...deviceData,
+        ...Object.fromEntries(
+          Object.entries(externalData ?? {}).filter(([, v]) => v !== undefined),
+        ),
+      };
+      this.categoryLog('cop', 'Combined data for COP calculation:', combinedData);
+
+      // Log data availability for each calculation method with detailed analysis
+      this.logDataAvailabilityForMethods(combinedData);
+
+      // Enhanced method selection logging
+      this.logCOPMethodSelection(combinedData);
+
+      // Calculate COP using the calculator service
+      const copConfig = {
+        forceMethod: (this.copSettings?.calculationMethod || 'auto') as 'auto' | 'direct_thermal' | 'carnot_estimation' | 'temperature_difference',
+        enableOutlierDetection: this.copSettings?.enableOutlierDetection !== false,
+        customOutlierThresholds: this.copSettings?.customOutlierThresholds || { minCOP: 0.5, maxCOP: 8.0 },
+      };
+
+      this.categoryLog('cop', 'COP calculation config:', copConfig);
+
+      const copResult = COPCalculator.calculateCOP(combinedData, copConfig);
+
+      // Note: External device source enhancement removed in simplified approach
+
+      // Enhanced result logging
+      this.logCOPCalculationResult(copResult);
+
+      // Check and trigger COP outlier detection (v1.0.8)
+      if (copResult.isOutlier && !this.lastCOPOutlierStatus) {
+        // Fire and forget pattern - don't block COP calculation
+        this.triggerFlowCard('cop_outlier_detected', {
+          outlier_cop: Math.round(copResult.cop * 100) / 100,
+          outlier_reason: copResult.outlierReason || 'Unknown reason',
+          calculation_method: copResult.method,
+        }).catch((err) => {
+          this.error('Failed to trigger cop_outlier_detected flow card:', err);
+        });
+
+        this.categoryLog('cop', `🚨 COP Outlier Detected: ${copResult.cop.toFixed(2)} - ${copResult.outlierReason}`);
+      }
+      this.lastCOPOutlierStatus = copResult.isOutlier;
+
+      // Update COP capability if valid
+      if (copResult.cop > 0 && !copResult.isOutlier) {
+        const roundedCOP = Math.round(copResult.cop * 100) / 100;
+        await this.setCapabilityValue('hp_cop', roundedCOP);
+
+        // COP efficiency changed trigger (v1.0.8, fixed v1.0.21, v1.3.2 state params)
+        // Trigger when COP changes significantly (±0.3 threshold)
+        const COP_CHANGE_THRESHOLD = 0.3;
+        if (this.lastCOPValue > 0 && Math.abs(roundedCOP - this.lastCOPValue) >= COP_CHANGE_THRESHOLD) {
+          const delta = roundedCOP - this.lastCOPValue;
+          const condition = delta > 0 ? 'above' : 'below';
+
+          this.triggerFlowCard('cop_efficiency_changed', {
+            current_cop: roundedCOP,
+            previous_cop: this.lastCOPValue,
+            change: Math.round(delta * 100) / 100,
+            calculation_method: copResult.method,
+            confidence_level: copResult.confidence,
+          }, {
+            condition,
+            cop_value: roundedCOP,
+          }).catch((err) => {
+            this.error('Failed to trigger cop_efficiency_changed:', err);
+          });
+        }
+        this.lastCOPValue = roundedCOP;
+
+        // Update COP method capability
+        const methodDisplayName = formatCopMethodDisplay(copResult, (key) => this.homey.__(key));
+        await this.setCapabilityValue('hp_cop_method', methodDisplayName);
+
+        this.categoryLog('cop', `✅ COP updated: ${roundedCOP} (method: ${copResult.method}, confidence: ${copResult.confidence})`);
+
+        // Log method description for debugging
+        this.categoryLog('cop', 'Method details:', COPCalculator.getMethodDescription(copResult.method));
+
+        // Add measurement to SCOP calculator if available
+        await this.addCOPMeasurementToSCOP(copResult, combinedData);
+
+        // Add measurement to rolling COP calculator
+        this.categoryLog('cop', '📊 Adding COP measurement to rolling calculator:', roundedCOP);
+        await this.addCOPMeasurementToRolling(copResult, combinedData);
+      } else if (copResult.isOutlier) {
+        this.categoryLog('cop', `⚠️ COP outlier detected (${copResult.cop.toFixed(2)}): ${copResult.outlierReason}`);
+        this.categoryLog('cop', 'Outlier data sources:', copResult.dataSources);
+
+        // Set COP to 0 to prevent null state (outliers are not reliable)
+        await this.setCapabilityValue('hp_cop', 0);
+
+        // Update COP method capability to show outlier status
+        const methodDisplayName = formatCopMethodDisplay(copResult, (key) => this.homey.__(key));
+        await this.setCapabilityValue('hp_cop_method', methodDisplayName);
+
+        this.categoryLog('cop', '✅ COP set to 0 due to outlier detection');
+
+        // Trigger outlier flow card if configured (fire-and-forget)
+        if (this.hasCapability('hp_cop')) {
+          this.triggerFlowCard('cop_outlier_detected', {
+            outlier_cop: copResult.cop,
+            outlier_reason: copResult.outlierReason || 'Unknown reason',
+            calculation_method: copResult.method,
+          }).catch((err) => {
+            this.error('Failed to trigger cop_outlier_detected:', err);
+          });
+        }
+      } else {
+        this.categoryLog('cop', `❌ COP calculation failed: ${copResult.method}`);
+        this.categoryLog('cop', 'Failed calculation data:', combinedData);
+
+        // Update capabilities to reflect failed calculation (always set to 0, never leave null)
+        await this.setCapabilityValue('hp_cop', 0);
+        const failedMethodName = formatCopMethodDisplay(copResult, (key) => this.homey.__(key));
+        await this.setCapabilityValue('hp_cop_method', failedMethodName);
+        this.categoryLog('cop', `✅ COP set to 0 due to failed calculation (${copResult.method})`);
+      }
+
+      // Trigger COP efficiency flow card if thresholds are met
+      await this.checkCOPEfficiencyTriggers(copResult);
+
+    } catch (error) {
+      this.error('❌ Error calculating COP:', error);
+
+      // Log debugging information on error
+      if (process.env.DEBUG === '1') {
+        this.error('COP calculation error context:', {
+          hasCapability: this.hasCapability('hp_cop'),
+          copSettings: this.copSettings,
+        });
+      }
+    }
+  }
+
+  /**
+   * Log data availability for each COP calculation method
+   */
+  private logDataAvailabilityForMethods(data: COPDataSources): void {
+    const methodRequirements = {
+      'Direct Thermal': ['electricalPower', 'waterFlowRate', 'inletTemperature', 'outletTemperature'],
+      'Carnot Estimation': ['outletTemperature', 'ambientTemperature', 'compressorFrequency'],
+      'Temperature Difference': ['inletTemperature', 'outletTemperature'],
+    };
+
+    this.categoryLog('cop', '🔍 COP Method Data Availability:');
+
+    Object.entries(methodRequirements).forEach(([method, required]) => {
+      const available = required.filter((field) => {
+        const value = data[field as keyof COPDataSources];
+        return value !== undefined && value !== null && value !== 0;
+      });
+
+      const canUse = available.length === required.length;
+      const status = canUse ? '✅' : '❌';
+
+      this.categoryLog('cop', `  ${status} ${method}: ${available.length}/${required.length} fields available`);
+
+      if (!canUse) {
+        const missing = required.filter((field) => {
+          const value = data[field as keyof COPDataSources];
+          return value === undefined || value === null || value === 0;
+        });
+        this.categoryLog('cop', `      Missing: ${missing.join(', ')}`);
+      }
+    });
+  }
+
+  /**
+   * Log comprehensive COP calculation result with calculation expressions
+   */
+  private logCOPCalculationResult(result: {
+    method: string;
+    cop: number;
+    confidence: string;
+    isOutlier: boolean;
+    outlierReason?: string;
+    dataSources: Record<string, { value: number | string; source: string }>;
+    calculationDetails?: Record<string, unknown>;
+  }): void {
+    const methodIcons = {
+      direct_thermal: '🎯',
+      carnot_estimation: '🧮',
+      temperature_difference: '📏',
+      insufficient_data: '❌',
+    };
+
+    const confidenceIcons = {
+      high: '🟢',
+      medium: '🟡',
+      low: '🔴',
+    };
+
+    this.categoryLog('cop', '📊 COP Calculation Result:');
+    this.categoryLog('cop', `  ${methodIcons[result.method as keyof typeof methodIcons]} Method: ${result.method}`);
+    this.categoryLog('cop', `  🎯 COP Value: ${result.cop.toFixed(3)}`);
+    this.categoryLog('cop', `  ${confidenceIcons[result.confidence as keyof typeof confidenceIcons]} Confidence: ${result.confidence}`);
+
+    if (result.isOutlier) {
+      this.categoryLog('cop', `  ⚠️ Outlier: ${result.outlierReason}`);
+    }
+
+    // Log calculation expression and formula used
+    this.logCalculationExpression(result);
+
+    // Log data sources used
+    if (Object.keys(result.dataSources).length > 0) {
+      this.categoryLog('cop', '  📊 Data Sources Used:');
+      Object.entries(result.dataSources).forEach(([key, value]) => {
+        this.categoryLog('cop', `    • ${key}: ${value.value} (${value.source})`);
+      });
+    }
+
+    // Log calculation details if available
+    if (result.calculationDetails && Object.keys(result.calculationDetails).length > 0) {
+      this.categoryLog('cop', '  🔬 Calculation Details:');
+      Object.entries(result.calculationDetails).forEach(([key, value]) => {
+        if (typeof value === 'number') {
+          this.categoryLog('cop', `    • ${key}: ${value.toFixed(3)}`);
+        } else {
+          this.categoryLog('cop', `    • ${key}: ${value}`);
+        }
+      });
+    }
+
+    // Log method description for context
+    const methodDescription = this.getCOPMethodDescription(result.method);
+    if (methodDescription) {
+      this.categoryLog('cop', `  📖 Method Info: ${methodDescription}`);
+    }
+  }
+
+  /**
+   * Log COP method selection logic with detailed reasoning
+   */
+  private logCOPMethodSelection(data: COPDataSources): void {
+    this.categoryLog('cop', '🎯 COP Method Selection Analysis:');
+
+    // Check Direct Thermal method
+    const canDirectThermal = !!(
+      data.waterFlowRate && data.waterFlowRate > 0
+      && data.inletTemperature !== undefined && data.inletTemperature !== null
+      && data.outletTemperature !== undefined && data.outletTemperature !== null
+      && data.electricalPower && data.electricalPower > 0
+    );
+
+    this.categoryLog('cop', `  🎯 Direct Thermal: ${canDirectThermal ? '✅ Available' : '❌ Not available'}`);
+    if (!canDirectThermal) {
+      const missing = [];
+      if (!data.waterFlowRate || data.waterFlowRate <= 0) missing.push('waterFlowRate');
+      if (data.inletTemperature === undefined || data.inletTemperature === null) missing.push('inletTemperature');
+      if (data.outletTemperature === undefined || data.outletTemperature === null) missing.push('outletTemperature');
+      if (!data.electricalPower || data.electricalPower <= 0) missing.push('electricalPower');
+      this.categoryLog('cop', `    Missing: ${missing.join(', ')}`);
+    }
+
+    // Check Carnot Estimation method
+    const canCarnot = !!(
+      data.outletTemperature !== undefined && data.outletTemperature !== null
+      && data.ambientTemperature !== undefined && data.ambientTemperature !== null
+      && data.compressorFrequency && data.compressorFrequency > 0
+    );
+
+    this.categoryLog('cop', `  🧮 Carnot Estimation: ${canCarnot ? '✅ Available' : '❌ Not available'}`);
+    if (!canCarnot) {
+      const missing = [];
+      if (data.outletTemperature === undefined || data.outletTemperature === null) missing.push('outletTemperature');
+      if (data.ambientTemperature === undefined || data.ambientTemperature === null) missing.push('ambientTemperature');
+      if (!data.compressorFrequency || data.compressorFrequency <= 0) missing.push('compressorFrequency');
+      this.categoryLog('cop', `    Missing: ${missing.join(', ')}`);
+    } else {
+      this.categoryLog('cop', '    ✅ All required data available:');
+      this.categoryLog('cop', `      • outletTemperature: ${data.outletTemperature}°C`);
+      this.categoryLog('cop', `      • ambientTemperature: ${data.ambientTemperature}°C`);
+      this.categoryLog('cop', `      • compressorFrequency: ${data.compressorFrequency}Hz`);
+    }
+
+    // Check Temperature Difference method
+    const canTempDiff = !!(
+      data.inletTemperature !== undefined && data.inletTemperature !== null
+      && data.outletTemperature !== undefined && data.outletTemperature !== null
+    );
+
+    this.categoryLog('cop', `  📏 Temperature Difference: ${canTempDiff ? '✅ Available' : '❌ Not available'}`);
+    if (!canTempDiff) {
+      const missing = [];
+      if (data.inletTemperature === undefined || data.inletTemperature === null) missing.push('inletTemperature');
+      if (data.outletTemperature === undefined || data.outletTemperature === null) missing.push('outletTemperature');
+      this.categoryLog('cop', `    Missing: ${missing.join(', ')}`);
+    }
+
+    // Determine which method will be selected
+    let selectedMethod = 'insufficient_data';
+    if (canDirectThermal) {
+      selectedMethod = 'direct_thermal';
+    } else if (canCarnot) {
+      selectedMethod = 'carnot_estimation';
+    } else if (canTempDiff) {
+      selectedMethod = 'temperature_difference';
+    }
+
+    this.categoryLog('cop', `  🏆 Selected Method: ${selectedMethod}`);
+
+    // Special case analysis for your scenario
+    if (!canDirectThermal && canCarnot) {
+      this.categoryLog('cop', '  💡 Analysis: Direct thermal unavailable due to missing electrical power, using Carnot estimation (good choice!)');
+    } else if (!canDirectThermal && !canCarnot && canTempDiff) {
+      this.categoryLog('cop', '  ⚠️  Analysis: Both direct thermal and Carnot unavailable, falling back to less accurate temperature difference method');
+    }
+  }
+
+  // Note: COP result enhancement with external sources now handled by EnergyTrackingService via ServiceCoordinator
+
+  /**
+   * Log the specific calculation expression used for the COP calculation
+   */
+  private logCalculationExpression(result: {
+    method: string;
+    cop: number;
+    dataSources: Record<string, { value: number | string; source: string }>;
+    calculationDetails?: Record<string, unknown>;
+  }): void {
+    const ds = result.dataSources;
+    const cd = result.calculationDetails;
+
+    switch (result.method) {
+      case 'direct_thermal': {
+        if (ds.electricalPower && ds.waterFlowRate && ds.temperatureDifference && cd?.massFlowRate && cd?.thermalOutput) {
+          this.categoryLog('cop', '  🧮 Formula: COP = Q_thermal / P_electrical');
+          this.categoryLog('cop', '  📐 Expression: Q_thermal = ṁ × Cp × ΔT');
+          this.categoryLog('cop', `    Where: ṁ = ${(cd.massFlowRate as number).toFixed(3)} kg/s (${ds.waterFlowRate.value} L/min)`);
+          this.categoryLog('cop', `           Cp = ${DeviceConstants.WATER_SPECIFIC_HEAT_CAPACITY} J/(kg·K) (water specific heat)`);
+          this.categoryLog('cop', `           ΔT = ${ds.temperatureDifference.value}°C (outlet - inlet temp)`);
+          this.categoryLog('cop', `  🔢 Calculation: ${(cd.thermalOutput as number).toFixed(1)} W / ${ds.electricalPower.value} W = ${result.cop.toFixed(3)}`);
+        }
+        break;
+      }
+
+      case 'carnot_estimation': {
+        if (ds.ambientTemperature && cd?.carnotCOP && cd?.efficiencyFactor) {
+          const ambientValue = typeof ds.ambientTemperature.value === 'number' ? ds.ambientTemperature.value : 0;
+          const tempDiffValue = ds.temperatureDifference && typeof ds.temperatureDifference.value === 'number'
+            ? ds.temperatureDifference.value : 0;
+          const outletTemp = ds.temperatureDifference
+            ? (ambientValue + tempDiffValue) : 'unknown';
+          this.categoryLog('cop', '  🧮 Formula: COP = Carnot_COP × η_practical');
+          this.categoryLog('cop', '  📐 Expression: Carnot_COP = T_hot / (T_hot - T_cold)');
+          this.categoryLog('cop', `    Where: T_hot = ${outletTemp}K, T_cold = ${(ambientValue + 273.15).toFixed(1)}K`);
+          this.categoryLog('cop', `           η_practical = ${(cd.efficiencyFactor as number).toFixed(3)} (efficiency factor)`);
+          this.categoryLog('cop', `  🔢 Calculation: ${(cd.carnotCOP as number).toFixed(3)} × ${(cd.efficiencyFactor as number).toFixed(3)} = ${result.cop.toFixed(3)}`);
+        }
+        break;
+      }
+
+      case 'temperature_difference': {
+        if (ds.temperatureDifference) {
+          this.categoryLog('cop', '  🧮 Formula: COP = f(ΔT) using empirical relationships');
+          this.categoryLog('cop', `  📐 Expression: Based on ΔT = ${ds.temperatureDifference.value}°C`);
+
+          const tempDiff = typeof ds.temperatureDifference.value === 'number' ? ds.temperatureDifference.value : 0;
+          const thresholds = DeviceConstants.COP_TEMP_DIFF_THRESHOLDS;
+
+          if (tempDiff < thresholds.LOW_EFFICIENCY_TEMP_DIFF) {
+            const logMsg = `  🔢 Calculation: ΔT < ${thresholds.LOW_EFFICIENCY_TEMP_DIFF}°C → COP = ${thresholds.LOW_EFFICIENCY_COP}`;
+            this.categoryLog('cop', logMsg);
+          } else if (tempDiff < thresholds.MODERATE_EFFICIENCY_TEMP_DIFF) {
+            const calculatedCOP = thresholds.MODERATE_EFFICIENCY_COP_BASE
+              + (tempDiff - thresholds.LOW_EFFICIENCY_TEMP_DIFF) * thresholds.MODERATE_EFFICIENCY_SLOPE;
+            const formula = `COP = ${thresholds.MODERATE_EFFICIENCY_COP_BASE} + (${tempDiff} - ${thresholds.LOW_EFFICIENCY_TEMP_DIFF}) × ${thresholds.MODERATE_EFFICIENCY_SLOPE}`;
+            this.categoryLog('cop', `  🔢 Calculation: ${formula} = ${calculatedCOP.toFixed(3)}`);
+          } else {
+            const logMsg = `  🔢 Calculation: ΔT ≥ ${thresholds.MODERATE_EFFICIENCY_TEMP_DIFF}°C → COP = ${thresholds.HIGH_EFFICIENCY_COP} (capped)`;
+            this.categoryLog('cop', logMsg);
+          }
+        }
+        break;
+      }
+
+      case 'insufficient_data': {
+        this.categoryLog('cop', '  ❌ Expression: No calculation performed - insufficient data available');
+        break;
+      }
+
+      default: {
+        this.categoryLog('cop', `  ❓ Expression: Unknown method '${result.method}'`);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Get human-readable description of COP calculation method with internationalization
+   */
+  private getCOPMethodDescription(method: string): string | null {
+    const i18nKey = `cop_method_description.${method}`;
+    try {
+      const description = this.homey.__(i18nKey);
+      if (description && description !== i18nKey) {
+        return description;
+      }
+    } catch (error) {
+      // Fall through to fallback descriptions
+    }
+
+    // Fallback to English descriptions if translation not available
+    switch (method) {
+      case 'direct_thermal':
+        return 'Direct thermal calculation using water flow and temperature difference (±5% accuracy)';
+      case 'carnot_estimation':
+        return 'Carnot-based estimation using compressor frequency and ambient temperature (±15% accuracy)';
+      case 'temperature_difference':
+        return 'Temperature difference estimation using empirical relationships (±30% accuracy)';
+      case 'insufficient_data':
+        return 'Insufficient data available for any COP calculation method';
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Check and trigger COP efficiency flow cards
+   */
+  private async checkCOPEfficiencyTriggers(copResult: { cop: number; isOutlier: boolean; method: string; confidence: string }): Promise<void> {
+    if (!copResult.cop || copResult.cop <= 0 || copResult.isOutlier) {
+      return;
+    }
+
+    try {
+      // Get previous COP value to detect significant changes
+      const previousCOP = this.getCapabilityValue('hp_cop') || 0;
+      const copChange = Math.abs(copResult.cop - previousCOP);
+
+      // Trigger COP efficiency changed if change is significant (> 0.5)
+      if (copChange > 0.5 && previousCOP > 0) {
+        // Determine condition based on thresholds
+        const goodEfficiencyThreshold = 3.0;
+        const excellentEfficiencyThreshold = 4.0;
+
+        let condition: 'above' | 'below';
+        let threshold: number;
+
+        if (copResult.cop >= excellentEfficiencyThreshold) {
+          condition = 'above';
+          threshold = excellentEfficiencyThreshold;
+        } else if (copResult.cop < goodEfficiencyThreshold) {
+          condition = 'below';
+          threshold = goodEfficiencyThreshold;
+        } else {
+          // In middle range, use previous value to determine direction
+          condition = copResult.cop > previousCOP ? 'above' : 'below';
+          threshold = goodEfficiencyThreshold;
+        }
+
+        // Fire-and-forget to prevent blocking
+        this.triggerFlowCard('cop_efficiency_changed', {
+          current_cop: copResult.cop,
+          threshold_cop: threshold,
+          calculation_method: copResult.method,
+          confidence_level: copResult.confidence,
+        }, {
+          condition,
+          cop_value: copResult.cop,
+        }).catch((err) => {
+          this.error('Failed to trigger cop_efficiency_changed:', err);
+        });
+
+        this.debugLog(`🎯 COP efficiency trigger fired: ${copResult.cop.toFixed(2)} ${condition} ${threshold}`);
+      }
+
+    } catch (error) {
+      this.debugLog('Error checking COP efficiency triggers:', error);
+    }
+  }
+
+  /**
+   * Gather data sources from device capabilities
+   */
+  private gatherDeviceDataSources(): COPDataSources {
+    const data: COPDataSources = {};
+
+    try {
+      // Electrical power (from internal or external source)
+      if (this.hasCapability('measure_power')) {
+        const power = this.getCapabilityValue('measure_power');
+        if (typeof power === 'number' && power > 0) {
+          data.electricalPower = power;
+        }
+      }
+
+      // Water flow rate
+      if (this.hasCapability('measure_water')) {
+        const flow = this.getCapabilityValue('measure_water');
+        if (typeof flow === 'number' && flow > 0) {
+          data.waterFlowRate = flow;
+        }
+      }
+
+      // Temperature measurements
+      if (this.hasCapability('measure_temperature.temp_top')) {
+        const temp = this.getCapabilityValue('measure_temperature.temp_top');
+        if (typeof temp === 'number') {
+          data.inletTemperature = temp;
+        }
+      }
+
+      if (this.hasCapability('measure_temperature.temp_bottom')) {
+        const temp = this.getCapabilityValue('measure_temperature.temp_bottom');
+        if (typeof temp === 'number') {
+          data.outletTemperature = temp;
+        }
+      }
+
+      if (this.hasCapability('measure_temperature.around_temp')) {
+        const temp = this.getCapabilityValue('measure_temperature.around_temp');
+        if (typeof temp === 'number') {
+          data.ambientTemperature = temp;
+        }
+      }
+
+      // Compressor frequency for Carnot estimation
+      if (this.hasCapability('measure_frequency.compressor_strength')) {
+        const freq = this.getCapabilityValue('measure_frequency.compressor_strength');
+        if (typeof freq === 'number') {
+          data.compressorFrequency = freq;
+        }
+      }
+
+      // System states
+      if (this.hasCapability('hp_state_defrost_state')) {
+        const defrost = this.getCapabilityValue('hp_state_defrost_state');
+        data.isDefrosting = Boolean(defrost);
+      }
+
+      if (this.hasCapability('hp_enum_mode')) {
+        const mode = this.getCapabilityValue('hp_enum_mode');
+        if (typeof mode === 'string') {
+          data.systemMode = mode;
+        }
+      }
+
+    } catch (error) {
+      this.error('Error gathering device data sources:', error);
+    }
+
+    return data;
+  }
+
+  /**
+   * Determine if a category should register flow cards based on combined logic
+   */
+  private shouldRegisterCategory(
+    _category: keyof CapabilityCategories,
+    availableCaps: string[],
+    userSetting: string,
+    capabilitiesWithData: string[],
+  ): boolean {
+
+    switch (userSetting) {
+      case 'disabled':
+        return false;
+
+      case 'enabled':
+        return availableCaps.length > 0; // Has capabilities
+
+      case 'auto':
+      default:
+        // Auto mode: require both capability AND data
+        return availableCaps.length > 0
+          && availableCaps.some((cap) => capabilitiesWithData.includes(cap));
+    }
+  }
+
+  /**
+   * Get category for a capability
+   */
+  private getCapabilityCategory(capability: string): keyof CapabilityCategories {
+    if (capability.startsWith('measure_temperature')) return 'temperature';
+    if (capability.startsWith('measure_voltage')) return 'voltage';
+    if (capability.startsWith('measure_current')) return 'current';
+    if (capability.includes('power')) return 'power';
+    if (capability.includes('pulse_steps')) return 'pulseSteps';
+    if (capability.startsWith('hp_state')) return 'states';
+    if (capability.includes('cop') || capability.includes('scop')) return 'efficiency';
+    return 'temperature'; // Default fallback
+  }
+
+  /**
+   * Process DPS data received from Tuya device and update corresponding Homey capabilities
+   * This method is called by the ServiceCoordinator when TuyAPI receives data or dp-refresh events
+   * v0.99.96: Refactored to batch async operations to prevent TuyAPI event loop blocking
+   * @param dps - DPS data object from Tuya device
+   */
+  updateCapabilitiesFromDps(dps: Record<string, unknown>): void {
+    try {
+      // Defensive guard: handle null/undefined dps parameter (v0.99.63 - crash fix)
+      if (!dps || typeof dps !== 'object') {
+        this.error('updateCapabilitiesFromDps called with invalid dps parameter:', dps);
+        return;
+      }
+
+      // Production logging (v1.3.13 - trigger debugging: changed from debugLog to log)
+      this.log('Device: Processing DPS update with keys:', Object.keys(dps).join(', '));
+
+      // Collect all capability updates as promises for batching (v0.99.96)
+      const updatePromises: Promise<void>[] = [];
+
+      // Convert string keys to numbers and process each DPS value
+      Object.entries(dps).forEach(([dpsKey, value]) => {
+        const dpsId = Number(dpsKey);
+        if (Number.isNaN(dpsId)) {
+          this.debugLog(`Skipping invalid DPS key: ${dpsKey}`);
+          return;
+        }
+
+        // Map DPS ID to ALL associated capabilities using multi-capability mapping (v0.99.54+)
+        // This supports dual picker/sensor architecture where one DPS updates multiple capabilities
+        const capabilities = HpMapping.dpsToCapabilities[dpsId];
+        if (!capabilities || capabilities.length === 0) {
+          this.debugLog(`No capability mapping found for DPS ${dpsId} (value: ${value})`);
+          return;
+        }
+
+        // Update ALL capabilities mapped to this DPS
+        // Example: DPS 11 updates both hp_enum_capacity_set (picker) and hp_sensor_capacity_set (sensor)
+        capabilities.forEach((capability) => {
+          // Check if device has this capability
+          if (!this.hasCapability(capability)) {
+            this.debugLog(`Device does not have capability ${capability} for DPS ${dpsId}`);
+            return;
+          }
+
+          try {
+            // Apply DPS scale transformation (v1.0.10+)
+            // Transforms raw Tuya integer values to actual decimal values
+            // Example: DPS 104 (power) raw 25000 → 2500 W (scale 1: ÷ 10)
+            // Example: DPS 103 (voltage) raw 2305 → 230.5 V (scale 3: ÷ 1000)
+            let transformedValue: unknown = HpMapping.transformDpsValue(dpsId, value);
+
+            // DPS 14 (hp_firmware_mcu): Format numeric firmware version to string (v2.7.0)
+            // Example: 433 → "v4.3.3", 1234 → "v12.3.4"
+            if (dpsId === 14 && capability === 'hp_firmware_mcu' && typeof transformedValue === 'number') {
+              const numValue = Math.floor(transformedValue);
+              if (numValue > 0 && numValue < 10000) {
+                // Format: split digits into major.minor.patch
+                // 433 → v4.3.3, 1234 → v12.3.4
+                const str = numValue.toString();
+                if (str.length === 3) {
+                  transformedValue = `v${str[0]}.${str[1]}.${str[2]}`;
+                } else if (str.length === 4) {
+                  transformedValue = `v${str.slice(0, 2)}.${str[2]}.${str[3]}`;
+                } else {
+                  transformedValue = `v${numValue}`;
+                }
+              }
+            }
+
+            // Collect capability update promise for batching
+            const updatePromise = this.setCapabilityValue(capability, transformedValue)
+              .then(() => {
+                this.debugLog(`✅ Updated capability ${capability} = ${transformedValue} (DPS ${dpsId}, raw: ${value})`);
+              })
+              .catch((error) => {
+                this.error(`Failed to update capability ${capability} with value ${transformedValue} (DPS ${dpsId}):`, error);
+              });
+
+            updatePromises.push(updatePromise);
+
+            // Update capability health tracking via service coordinator (synchronous)
+            // Use transformed value for health checks
+            this.serviceCoordinator?.getCapabilityHealth()?.updateCapabilityHealth(capability, transformedValue);
+
+            // Fault detection for DPS 15 (hp_fault) - v1.0.7 feature
+            // Trigger fault_detected flow card when new fault code appears
+            if (dpsId === 15 && capability === 'hp_fault') {
+              // Use transformedValue for consistency (DPS 15 has no scale, so same as raw value)
+              const faultCode = typeof transformedValue === 'number' ? transformedValue : 0;
+
+              // Only trigger on NEW faults (not on every DPS update)
+              // faultCode > 0 = active fault, faultCode changed = new/different fault
+              if (faultCode > 0 && faultCode !== this.lastFaultCode) {
+                // Fire-and-forget pattern to prevent blocking DPS processing
+                this.triggerFlowCard('fault_detected', {
+                  fault_code: faultCode,
+                  fault_description: getFaultDescription(faultCode, this.homey.i18n.getLanguage() as 'en' | 'nl'),
+                }).catch((err) => {
+                  this.error('Failed to trigger fault_detected flow card:', err);
+                });
+
+                this.log(`🚨 Fault detected: Code ${faultCode} - ${getFaultDescription(faultCode, 'en')}`);
+                this.lastFaultCode = faultCode;
+              } else if (faultCode === 0 && this.lastFaultCode !== 0) {
+                // Fault cleared - log but don't trigger (users may want separate "fault_cleared" trigger in future)
+                this.log(`✅ Fault cleared: Previous code ${this.lastFaultCode} resolved`);
+                this.lastFaultCode = 0;
+              }
+            }
+
+            // Boolean state change detection (v1.1.0) - compressor, defrost, backwater
+            // Triggers when these boolean states transition from true→false or false→true
+
+            // Compressor state (hp_state_compressor_state) - DPS 27
+            if (dpsId === 27 && capability === 'hp_state_compressor_state') {
+              const currentState = typeof transformedValue === 'boolean' ? transformedValue : false;
+
+              // Only log state changes (Homey automatically triggers flow cards on capability changes)
+              if (this.lastCompressorState !== null && currentState !== this.lastCompressorState) {
+                const stateLabel = currentState ? 'running' : 'stopped';
+                this.log(`⚙️ Compressor state changed to: ${stateLabel} (Homey auto-triggers flow cards)`);
+              }
+              this.lastCompressorState = currentState;
+            }
+
+            // Defrost state (hp_state_defrost_state) - DPS 33
+            if (dpsId === 33 && capability === 'hp_state_defrost_state') {
+              const currentState = typeof transformedValue === 'boolean' ? transformedValue : false;
+
+              // Only log state changes (Homey automatically triggers flow cards on capability changes)
+              if (this.lastDefrostState !== null && currentState !== this.lastDefrostState) {
+                const stateLabel = currentState ? 'active' : 'inactive';
+                this.log(`🧊 Defrost state changed to: ${stateLabel} (Homey auto-triggers flow cards)`);
+
+                // v2.9.0: Track defrost events for DefrostLearner
+                if (currentState === true) {
+                  // Defrost STARTED
+                  this.defrostStartTime = Date.now();
+                } else if (this.defrostStartTime) {
+                  // Defrost ENDED — notify adaptive control for COP learning
+                  const durationSec = (Date.now() - this.defrostStartTime) / 1000;
+                  const outdoorTemp = this.getCapabilityValue('measure_temperature.outdoor')
+                    ?? this.getCapabilityValue('measure_temperature') ?? 0;
+                  this.serviceCoordinator?.onDefrostComplete(outdoorTemp, durationSec);
+                  this.defrostStartTime = null;
+
+                  // v2.9.14: Update rolling 24h defrost statistics in device.ts
+                  this.recordDefrostEvent(durationSec);
+                }
+              }
+              this.lastDefrostState = currentState;
+
+              // Update defrost active power when defrost state changes
+              this.updateDefrostActivePower().catch((err) => {
+                this.error('Failed to update defrost active power after state change:', err);
+              });
+            }
+
+            // Backwater state (hp_state_backwater) - DPS 31
+            if (dpsId === 31 && capability === 'hp_state_backwater') {
+              const currentState = typeof transformedValue === 'boolean' ? transformedValue : false;
+
+              // Only log state changes (Homey automatically triggers flow cards on capability changes)
+              if (this.lastBackwaterState !== null && currentState !== this.lastBackwaterState) {
+                const stateLabel = currentState ? 'flowing' : 'blocked';
+                this.log(`💧 Backwater state changed to: ${stateLabel} (Homey auto-triggers flow cards)`);
+              }
+              this.lastBackwaterState = currentState;
+            }
+
+            // Target temperature (target_temperature) - DPS 4
+            // v2.5.1 Fix: Store DPS 4 value for hp_simulated_target synchronization on app restart
+            if (dpsId === 4 && capability === 'target_temperature') {
+              const temperatureValue = typeof transformedValue === 'number' ? transformedValue : null;
+              if (temperatureValue !== null) {
+                // Fire-and-forget: store value for capability sync during next initialization
+                this.serviceCoordinator?.getAdaptiveControl()?.storeDPS4Value(temperatureValue)
+                  .catch((err) => {
+                    this.error('Failed to store DPS 4 value:', err);
+                  });
+              }
+            }
+
+            // Enum mode change detection (v1.1.0) - heating mode, work mode, water mode
+            // Triggers when these enum values change
+
+            // Heating mode (hp_enum_mode) - DPS 2
+            if (dpsId === 2 && capability === 'hp_enum_mode') {
+              const currentMode = typeof transformedValue === 'string' ? transformedValue : 'unknown';
+
+              // Only trigger on mode CHANGE (not on initialization)
+              if (this.lastHeatingMode !== null && currentMode !== this.lastHeatingMode) {
+                this.triggerFlowCard('heating_mode_changed', {
+                  mode: currentMode,
+                  previous_mode: this.lastHeatingMode,
+                }).catch((err) => {
+                  this.error('Failed to trigger heating_mode_changed:', err);
+                });
+                this.log(`Heating mode changed from ${this.lastHeatingMode} to ${currentMode}`);
+              }
+              this.lastHeatingMode = currentMode;
+            }
+
+            // Work mode (hp_enum_work_mode) - DPS 5
+            if (dpsId === 5 && capability === 'hp_enum_work_mode') {
+              const currentMode = typeof transformedValue === 'string' ? transformedValue : 'unknown';
+
+              // Only trigger on mode CHANGE (not on initialization)
+              if (this.lastWorkMode !== null && currentMode !== this.lastWorkMode) {
+                this.triggerFlowCard('work_mode_changed', {
+                  mode: currentMode,
+                  previous_mode: this.lastWorkMode,
+                }).catch((err) => {
+                  this.error('Failed to trigger work_mode_changed:', err);
+                });
+                this.log(`Work mode changed from ${this.lastWorkMode} to ${currentMode}`);
+              }
+              this.lastWorkMode = currentMode;
+            }
+
+            // Water mode (hp_enum_water_mode) - DPS 10
+            if (dpsId === 10 && capability === 'hp_enum_water_mode') {
+              const currentMode = typeof transformedValue === 'string' ? transformedValue : 'unknown';
+
+              // Only trigger on mode CHANGE (not on initialization)
+              if (this.lastWaterMode !== null && currentMode !== this.lastWaterMode) {
+                this.triggerFlowCard('water_mode_changed', {
+                  mode: currentMode,
+                  previous_mode: this.lastWaterMode,
+                }).catch((err) => {
+                  this.error('Failed to trigger water_mode_changed:', err);
+                });
+                this.log(`Water mode changed from ${this.lastWaterMode} to ${currentMode}`);
+              }
+              this.lastWaterMode = currentMode;
+            }
+
+            // Temperature change detection (v1.0.8) - inlet, outlet, ambient
+            // Trigger when temperature changes significantly (±0.5°C threshold)
+            const TEMP_CHANGE_THRESHOLD = 0.5; // Minimum °C change to trigger
+
+            // Inlet temperature (measure_temperature.temp_top)
+            if (capability === 'measure_temperature.temp_top' && typeof transformedValue === 'number') {
+              if (this.lastInletTemp !== null && Math.abs(transformedValue - this.lastInletTemp) >= TEMP_CHANGE_THRESHOLD) {
+                const delta = transformedValue - this.lastInletTemp;
+                const condition = delta > 0 ? 'above' : 'below';
+
+                this.triggerFlowCard('inlet_temperature_changed', {
+                  current_temperature: Math.round(transformedValue * 10) / 10,
+                }, {
+                  condition,
+                  temperature: transformedValue,
+                }).catch((err) => {
+                  this.error('Failed to trigger inlet_temperature_changed:', err);
+                });
+              }
+              this.lastInletTemp = transformedValue;
+            }
+
+            // Outlet temperature (measure_temperature.temp_bottom)
+            if (capability === 'measure_temperature.temp_bottom' && typeof transformedValue === 'number') {
+              if (this.lastOutletTemp !== null && Math.abs(transformedValue - this.lastOutletTemp) >= TEMP_CHANGE_THRESHOLD) {
+                const delta = transformedValue - this.lastOutletTemp;
+                const condition = delta > 0 ? 'above' : 'below';
+
+                this.triggerFlowCard('outlet_temperature_changed', {
+                  current_temperature: Math.round(transformedValue * 10) / 10,
+                }, {
+                  condition,
+                  temperature: transformedValue,
+                }).catch((err) => {
+                  this.error('Failed to trigger outlet_temperature_changed:', err);
+                });
+              }
+              this.lastOutletTemp = transformedValue;
+            }
+
+            // Ambient temperature (measure_temperature.around_temp)
+            if (capability === 'measure_temperature.around_temp' && typeof transformedValue === 'number') {
+              if (this.lastAmbientTemp !== null && Math.abs(transformedValue - this.lastAmbientTemp) >= TEMP_CHANGE_THRESHOLD) {
+                const delta = transformedValue - this.lastAmbientTemp;
+                const condition = delta > 0 ? 'above' : 'below';
+
+                this.log(`🌡️  ambient_temperature_changed TRIGGER: ${this.lastAmbientTemp}°C → ${transformedValue}°C (delta: ${delta > 0 ? '+' : ''}${delta.toFixed(1)}°C, condition: ${condition})`);
+
+                this.triggerFlowCard('ambient_temperature_changed', {
+                  current_temperature: Math.round(transformedValue * 10) / 10,
+                }, {
+                  condition,
+                  temperature: transformedValue,
+                }).catch((err) => {
+                  this.error('Failed to trigger ambient_temperature_changed:', err);
+                });
+              }
+              this.lastAmbientTemp = transformedValue;
+            }
+
+            // === EXPERT MODE TRIGGERS (v1.3.12) ===
+            // Only fire if flow_expert_mode setting is enabled
+            const expertModeEnabled = this.getSettings().flow_expert_mode === true;
+
+            if (expertModeEnabled) {
+              const FREQUENCY_CHANGE_THRESHOLD = 5; // Minimum Hz change to trigger
+              const FLOW_CHANGE_THRESHOLD = 1; // Minimum L/min change to trigger
+
+              // Compressor frequency (measure_frequency.compressor_strength)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_frequency.compressor_strength' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastCompressorFreq !== null && Math.abs(transformedValue - this.lastCompressorFreq) >= FREQUENCY_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastCompressorFreq;
+                  const condition = delta > 0 ? 'above' : 'below';
+
+                  const compressorAlertMessage = [
+                    `⚙️  compressor_efficiency_alert TRIGGER: ${this.lastCompressorFreq} Hz → ${transformedValue} Hz`,
+                    `(delta: ${delta > 0 ? '+' : ''}${delta.toFixed(1)} Hz, condition: ${condition})`,
+                  ].join(' ');
+                  this.log(compressorAlertMessage);
+
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedFreq = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedFreq)) {
+                    this.triggerFlowCard('compressor_efficiency_alert', {
+                      current_frequency: roundedFreq,
+                      threshold_frequency: transformedValue,
+                    }, {
+                      condition,
+                      frequency: transformedValue,
+                    }).catch((err) => {
+                      this.error('Failed to trigger compressor_efficiency_alert:', err);
+                    });
+                  }
+                }
+                this.lastCompressorFreq = transformedValue;
+              }
+
+              // Fan motor frequency (measure_frequency.fan_motor_frequency)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_frequency.fan_motor_frequency' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastFanMotorFreq !== null && Math.abs(transformedValue - this.lastFanMotorFreq) >= FREQUENCY_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastFanMotorFreq;
+                  const condition = delta > 0 ? 'above' : 'below';
+
+                  const fanMotorAlertMessage = [
+                    `💨 fan_motor_efficiency_alert TRIGGER: ${this.lastFanMotorFreq} Hz → ${transformedValue} Hz`,
+                    `(delta: ${delta > 0 ? '+' : ''}${delta.toFixed(1)} Hz, condition: ${condition})`,
+                  ].join(' ');
+                  this.log(fanMotorAlertMessage);
+
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedFreq = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedFreq)) {
+                    this.triggerFlowCard('fan_motor_efficiency_alert', {
+                      current_fan_frequency: roundedFreq,
+                      threshold_frequency: transformedValue,
+                    }, {
+                      condition,
+                      frequency: transformedValue,
+                    }).catch((err) => {
+                      this.error('Failed to trigger fan_motor_efficiency_alert:', err);
+                    });
+                  }
+                }
+                this.lastFanMotorFreq = transformedValue;
+              }
+
+              // Water flow rate (measure_water)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_water' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastWaterFlow !== null && Math.abs(transformedValue - this.lastWaterFlow) >= FLOW_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastWaterFlow;
+                  const condition = delta > 0 ? 'above' : 'below';
+
+                  this.log(`💧 water_flow_alert TRIGGER: ${this.lastWaterFlow} L/min → ${transformedValue} L/min (delta: ${delta > 0 ? '+' : ''}${delta.toFixed(1)} L/min, condition: ${condition})`);
+
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedFlow = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedFlow)) {
+                    this.triggerFlowCard('water_flow_alert', {
+                      current_flow_rate: roundedFlow,
+                      threshold_flow_rate: transformedValue,
+                    }, {
+                      condition,
+                      flow_rate: transformedValue,
+                    }).catch((err) => {
+                      this.error('Failed to trigger water_flow_alert:', err);
+                    });
+                  }
+                }
+                this.lastWaterFlow = transformedValue;
+              }
+
+              // === TEMPERATURE ALERTS (v2.5.x) ===
+              const TEMP_CHANGE_THRESHOLD = 2; // Minimum °C change to trigger
+
+              // Coiler temperature (measure_temperature.coiler_temp)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.coiler_temp' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastCoilerTemp !== null && Math.abs(transformedValue - this.lastCoilerTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastCoilerTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ coiler_temperature_alert TRIGGER: ${this.lastCoilerTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('coiler_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger coiler_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastCoilerTemp = transformedValue;
+              }
+
+              // Discharge temperature (measure_temperature.venting_temp)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.venting_temp' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastDischargeTemp !== null && Math.abs(transformedValue - this.lastDischargeTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastDischargeTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ discharge_temperature_alert TRIGGER: ${this.lastDischargeTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('discharge_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger discharge_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastDischargeTemp = transformedValue;
+              }
+
+              // Suction temperature (measure_temperature.coiler_temp_f)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.coiler_temp_f' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastSuctionTemp !== null && Math.abs(transformedValue - this.lastSuctionTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastSuctionTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ suction_temperature_alert TRIGGER: ${this.lastSuctionTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('suction_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger suction_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastSuctionTemp = transformedValue;
+              }
+
+              // High pressure temperature (measure_temperature.temp_current_f)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.temp_current_f' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastHighPressureTemp !== null && Math.abs(transformedValue - this.lastHighPressureTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastHighPressureTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ high_pressure_temperature_alert TRIGGER: ${this.lastHighPressureTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('high_pressure_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger high_pressure_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastHighPressureTemp = transformedValue;
+              }
+
+              // Low pressure temperature (measure_temperature.top_temp_f)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.top_temp_f' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastLowPressureTemp !== null && Math.abs(transformedValue - this.lastLowPressureTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastLowPressureTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ low_pressure_temperature_alert TRIGGER: ${this.lastLowPressureTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('low_pressure_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger low_pressure_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastLowPressureTemp = transformedValue;
+              }
+
+              // Incoiler temperature (measure_temperature.bottom_temp_f)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.bottom_temp_f' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastIncoilerTemp !== null && Math.abs(transformedValue - this.lastIncoilerTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastIncoilerTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ incoiler_temperature_alert TRIGGER: ${this.lastIncoilerTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('incoiler_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger incoiler_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastIncoilerTemp = transformedValue;
+              }
+
+              // Tank temperature (measure_temperature.around_temp_f)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.around_temp_f' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastTankTemp !== null && Math.abs(transformedValue - this.lastTankTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastTankTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ tank_temperature_alert TRIGGER: ${this.lastTankTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('tank_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger tank_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastTankTemp = transformedValue;
+              }
+
+              // Economizer inlet temperature (measure_temperature.evlin)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.evlin' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastEconomizerInletTemp !== null && Math.abs(transformedValue - this.lastEconomizerInletTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastEconomizerInletTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ economizer_inlet_temperature_alert TRIGGER: ${this.lastEconomizerInletTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('economizer_inlet_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger economizer_inlet_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastEconomizerInletTemp = transformedValue;
+              }
+
+              // Economizer outlet temperature (measure_temperature.eviout)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'measure_temperature.eviout' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastEconomizerOutletTemp !== null && Math.abs(transformedValue - this.lastEconomizerOutletTemp) >= TEMP_CHANGE_THRESHOLD) {
+                  const delta = transformedValue - this.lastEconomizerOutletTemp;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🌡️ economizer_outlet_temperature_alert TRIGGER: ${this.lastEconomizerOutletTemp}°C → ${transformedValue}°C`);
+                  // v2.8.2: Pre-calculate and validate rounded value before triggering
+                  const roundedTemp = Math.round(transformedValue * 10) / 10;
+                  if (Number.isFinite(roundedTemp)) {
+                    this.triggerFlowCard('economizer_outlet_temperature_alert', {
+                      current_temperature: roundedTemp,
+                      threshold_temperature: transformedValue,
+                    }, { condition, temperature: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger economizer_outlet_temperature_alert:', err);
+                    });
+                  }
+                }
+                this.lastEconomizerOutletTemp = transformedValue;
+              }
+
+              // === PULSE STEPS ALERTS (v2.5.x) ===
+              const PULSE_STEPS_THRESHOLD = 20; // Minimum steps change to trigger
+
+              // EEV pulse steps (hp_measure_pulse_steps_temp_current)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'hp_measure_pulse_steps_temp_current' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastEevPulseSteps !== null && Math.abs(transformedValue - this.lastEevPulseSteps) >= PULSE_STEPS_THRESHOLD) {
+                  const delta = transformedValue - this.lastEevPulseSteps;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🔧 eev_pulse_steps_alert TRIGGER: ${this.lastEevPulseSteps} → ${transformedValue} steps`);
+
+                  // v2.8.2: Upgraded validation from !isNaN() to isFinite() to catch Infinity
+                  if (Number.isFinite(transformedValue)) {
+                    this.triggerFlowCard('eev_pulse_steps_alert', {
+                      current_pulse_steps: transformedValue,
+                      threshold_pulse_steps: transformedValue,
+                    }, { condition, pulse_steps: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger eev_pulse_steps_alert:', err);
+                    });
+                  } else {
+                    this.error(`⚠️ Skipped eev_pulse_steps_alert trigger - invalid value: ${transformedValue}`);
+                  }
+                }
+                this.lastEevPulseSteps = transformedValue;
+              }
+
+              // EVI pulse steps (hp_measure_pulse_steps_effluent_temp)
+              // v2.8.2: Added Number.isFinite() check to prevent NaN/Infinity token validation errors
+              if (capability === 'hp_measure_pulse_steps_effluent_temp' && typeof transformedValue === 'number' && Number.isFinite(transformedValue)) {
+                if (this.lastEviPulseSteps !== null && Math.abs(transformedValue - this.lastEviPulseSteps) >= PULSE_STEPS_THRESHOLD) {
+                  const delta = transformedValue - this.lastEviPulseSteps;
+                  const condition = delta > 0 ? 'above' : 'below';
+                  this.log(`🔧 evi_pulse_steps_alert TRIGGER: ${this.lastEviPulseSteps} → ${transformedValue} steps`);
+
+                  // v2.8.2: Upgraded validation from !isNaN() to isFinite() to catch Infinity
+                  if (Number.isFinite(transformedValue)) {
+                    this.triggerFlowCard('evi_pulse_steps_alert', {
+                      current_pulse_steps: transformedValue,
+                      threshold_pulse_steps: transformedValue,
+                    }, { condition, pulse_steps: transformedValue }).catch((err) => {
+                      this.error('Failed to trigger evi_pulse_steps_alert:', err);
+                    });
+                  } else {
+                    this.error(`⚠️ Skipped evi_pulse_steps_alert trigger - invalid value: ${transformedValue}`);
+                  }
+                }
+                this.lastEviPulseSteps = transformedValue;
+              }
+            }
+
+          } catch (error) {
+            this.error(`Error processing DPS ${dpsId} -> ${capability}:`, error);
+          }
+        });
+      });
+
+      // Execute all updates in parallel with proper error isolation (v0.99.96)
+      // Use fire-and-forget pattern to prevent blocking TuyAPI event loop
+      if (updatePromises.length > 0) {
+        Promise.allSettled(updatePromises)
+          .then((results) => {
+            const failures = results.filter((r) => r.status === 'rejected').length;
+            if (failures > 0) {
+              this.error(`DPS update completed with ${failures} failures out of ${results.length} operations`);
+            } else {
+              this.debugLog(`✅ Successfully batched ${results.length} capability updates`);
+            }
+          })
+          .catch((error) => {
+            // This should never happen with allSettled, but defensive catch for safety
+            this.error('Unexpected error in batched capability updates:', error);
+          });
+      }
+    } catch (error) {
+      this.error('❌ Critical error in updateCapabilitiesFromDps:', error);
+      // Don't rethrow - allow device to continue operating even if one DPS update fails
+    }
+  }
+
+  private getCapabilityFriendlyTitle(capability: string): string {
+    try {
+      // Prefer the title from driver.compose.json capabilitiesOptions if present
+      const deviceWithDriver = this as unknown as { driver?: { manifest?: { capabilitiesOptions?: Record<string, { title?: { en?: string; nl?: string } }> } } };
+      const opt = deviceWithDriver?.driver?.manifest?.capabilitiesOptions?.[capability];
+      const title = opt?.title?.en || opt?.title?.nl;
+      if (title) return title;
+    } catch {
+      // ignore typing/runtime issues and fall back below
+    }
+
+    // Fallback mapping by capability suffix
+    const part = capability.split('.')[1] || capability;
+    const map: Record<string, string> = {
+      around_temp: 'Ambient temp',
+      temp_top: 'Inlet temp',
+      temp_bottom: 'Outlet temp',
+      coiler_temp: 'Coiler temp',
+      venting_temp: 'Discharge temp',
+      temp_current_f: 'High pressure temp',
+      top_temp_f: 'Low pressure temp',
+      bottom_temp_f: 'Incoiler temp',
+      coiler_temp_f: 'Suction temp',
+      evlin: 'Economizer inlet',
+      eviout: 'Economizer outlet',
+    };
+    return map[part] || capability;
+  }
+
+  // Note: Critical conditions and flow card triggering now handled by FlowCardManagerService via ServiceCoordinator
+
+  /**
+   * Initialize flow cards based on current settings (called once during device init)
+   */
+  private async initializeFlowCards(): Promise<void> {
+    // CRITICAL: Clear any pending retry timeout BEFORE attempting initialization (v2.0.2 re-init protection)
+    // Prevents duplicate retry attempts if initializeFlowCards() is called multiple times
+    if (this.flowCardInitRetryTimeout) {
+      clearTimeout(this.flowCardInitRetryTimeout);
+      this.flowCardInitRetryTimeout = null;
+      this.log('Cleared pending flow card retry timeout to prevent duplicate attempts');
+    }
+
+    try {
+      await this.updateFlowCards();
+      this.isFlowCardsInitialized = true;
+      this.log('Flow cards initialized successfully');
+    } catch (error) {
+      const categorizedError = TuyaErrorCategorizer.categorize(error as Error, 'Initializing flow cards');
+      this.error(TuyaErrorCategorizer.formatForLogging(categorizedError));
+
+      if (categorizedError.retryable) {
+        this.log('Will retry flow card initialization in 5 seconds');
+        // Track timeout for cleanup to prevent memory leak
+        this.flowCardInitRetryTimeout = this.homey.setTimeout(() => {
+          this.flowCardInitRetryTimeout = null; // Clear reference after execution
+          this.initializeFlowCards().catch((err) => {
+            this.error('Flow card retry initialization failed:', err);
+          });
+        }, 5000);
+      }
+    }
+  }
+
+  /**
+   * Initialize connection status tracking (v0.99.47, optimized v2.0.2)
+   * Updates hp_connection_status capability every 30 seconds
+   */
+  private async initializeConnectionStatusTracking(): Promise<void> {
+    // CRITICAL: Clear existing interval BEFORE creating new one (v2.0.2 re-init protection)
+    // Prevents multiple intervals if this function is called multiple times
+    if (this.connectionStatusInterval) {
+      clearInterval(this.connectionStatusInterval);
+      this.connectionStatusInterval = null;
+      this.log('Cleared existing connection status interval to prevent accumulation');
+    }
+
+    // Immediate initial update
+    await this.updateConnectionStatus();
+
+    // Set up periodic updates (every 30 seconds) - optimized for memory efficiency (v2.0.2)
+    // Reduced from 5s to 30s: 83% less GC pressure, 6x slower leak amplification
+    this.connectionStatusInterval = this.homey.setInterval(async () => {
+      await this.updateConnectionStatus();
+    }, 30000); // 30 seconds
+
+    this.log('Connection status tracking initialized (30s interval)');
+  }
+
+  /**
+   * State for the Hp live operation widget (v3.3.0). Read-only: no side effects.
+   */
+  public getLiveOperationWidgetState(): LiveOperationWidgetState {
+    const tuyaService = this.serviceCoordinator?.getTuyaConnection() ?? null;
+    return buildLiveOperationWidgetState({
+      device: this,
+      connected: tuyaService?.getPublicConnectionState() ?? null,
+      lastDataAt: tuyaService?.getLastDataReceivedAt() ?? null,
+    });
+  }
+
+  /**
+   * Update the hp_connection_status capability based on TuyaConnectionService state (v0.99.61: now includes timestamp)
+   */
+  private async updateConnectionStatus(): Promise<void> {
+    if (!this.hasCapability('hp_connection_status')) {
+      return;
+    }
+
+    try {
+      // Get formatted status with timestamp from ServiceCoordinator if available
+      if (this.serviceCoordinator) {
+        const tuyaService = this.serviceCoordinator.getTuyaConnection();
+        const formattedStatus = tuyaService.getFormattedConnectionStatus();
+        await this.setCapabilityValue('hp_connection_status', formattedStatus);
+
+        // TuyaConnectionService alone publishes confirmed connection state.
+
+      }
+    } catch (error) {
+      this.error('Failed to update connection status capability:', error);
+    }
+  }
+
+  /**
+   * Update all flow cards based on current settings (called when settings change)
+   */
+  private async updateFlowCards(): Promise<void> {
+    try {
+      // Flow card registration is fully handled by FlowCardManagerService via ServiceCoordinator
+      // ServiceCoordinator automatically updates flow cards based on capability health events
+      if (this.serviceCoordinator) {
+        await this.serviceCoordinator.getFlowCardManager()?.updateFlowCards();
+        this.log('Flow cards updated via FlowCardManagerService');
+      } else {
+        this.log('ServiceCoordinator not available, skipping flow card update');
+      }
+    } catch (error) {
+      this.error('Error updating flow cards:', error);
+    }
+  }
+
+  /**
+   * Unregister all flow card listeners - delegated to FlowCardManagerService
+   */
+  private unregisterAllFlowCards(): void {
+    // Flow card unregistration is handled automatically by FlowCardManagerService
+    this.log('Flow card unregistration delegated to FlowCardManagerService');
+  }
+
+  /**
+   * Get outdoor temperature with priority fallback (v2.0.2)
+   *
+   * Priority order (most accurate first):
+   * 1. External ambient sensor (hp_external_ambient) - weather station, external thermometer
+   * 2. Heat pump's own sensor (measure_temperature.around_temp) - less accurate due to compressor heat
+   *
+   * @returns {number | null} Outdoor temperature in °C, or null if unavailable
+   */
+  public getOutdoorTemperatureWithFallback(): number | null {
+    // Priority 1: External ambient sensor (most accurate)
+    let outdoorTemp = this.getCapabilityValue('hp_external_ambient') as number | null;
+    let source = 'external';
+
+    if (outdoorTemp === null || outdoorTemp === undefined) {
+      // Priority 2: Heat pump's own sensor (fallback)
+      outdoorTemp = this.getCapabilityValue('measure_temperature.around_temp') as number | null;
+      source = 'internal';
+    }
+
+    if (outdoorTemp !== null && outdoorTemp !== undefined) {
+      this.debugLog(`Using ${source} outdoor temperature: ${outdoorTemp}°C`);
+      return outdoorTemp;
+    }
+
+    this.debugLog('No outdoor temperature available (tried external + internal)');
+    return null;
+  }
+
+  /**
+   * @todo Helper method to trigger flow cards safely - delegated to FlowCardManagerService
+   * @param cardId - Flow card ID
+   * @param tokens - Token values to pass to flow
+   * @param state - Optional state parameter for runListener filtering (v1.3.2+)
+   */
+  private async triggerFlowCard(
+    cardId: string,
+    tokens: Record<string, unknown>,
+    state: Record<string, unknown> = {},
+  ) {
+    // Flow card triggering is handled automatically by FlowCardManagerService
+    // For now, use the standard Homey trigger approach for compatibility
+    try {
+      // Log tokens before triggering (safeStringify handles circular refs)
+      this.log(`🎯 triggerFlowCard: ${cardId}, tokens:`, tokens, 'state:', state);
+      const triggerCard = this.homey.flow.getDeviceTriggerCard(cardId);
+      this.log(`🎯 Retrieved trigger card for ${cardId}, about to call trigger()`);
+      await triggerCard.trigger(this, tokens, state);
+      this.log(`✅ Successfully triggered flow card: ${cardId}`);
+    } catch (error) {
+      this.log(`❌ Flow card ${cardId} not available or trigger failed:`, error);
+    }
+  }
+
+  /**
+   * onInit is called when the device is initialized.
+   */
+  /** Migration v3.11.0: existing devices keep the fixed price thresholds; new devices get 'auto' in onAdded. */
+  private async _migratePriceThresholdMode(): Promise<void> {
+    try {
+      if (await migratePriceThresholdMode(this)) {
+        this.logger.info('Migration v3.11.0: price thresholds set to fixed');
+      }
+    } catch (error) {
+      this.logger.warn('Migration v3.11.0: failed to set the price threshold mode:', error);
+    }
+  }
+
+  /** v3.11.0: a newly paired device uses the automatic price thresholds (onInit has already run). */
+  private async _useAutoPriceThresholds(): Promise<void> {
+    try {
+      await useAutoThresholdsForNewDevice(this);
+      this.serviceCoordinator?.getAdaptiveControl().getEnergyOptimizer().setThresholdMode('auto');
+      this.logger.info('New device: automatic price thresholds');
+    } catch (error) {
+      this.logger.warn('Failed to set automatic price thresholds:', error);
+    }
+  }
+
+  /** Migration v3.6.2 (R25): a forgetting factor outside 0.9985–0.9995 (minimum raised in 3.4.2) blocks every settings save. */
+  private async _migrateForgettingFactor(): Promise<void> {
+    const stored: unknown = this.getSetting('building_model_forgetting_factor');
+    const replacement = BuildingModelLearner.forgettingFactorMigration(stored);
+    if (replacement === null) return;
+    try {
+      await this.setSettings({ building_model_forgetting_factor: replacement });
+      this.logger.info(`Migration v3.6.2: forgetting factor ${String(stored)} set to ${replacement}`);
+    } catch (error) {
+      this.logger.warn('Migration v3.6.2: failed to update the forgetting factor:', error);
+    }
+  }
+
+  async onInit() {
+    try {
+      // Initialize structured logger with user-configurable log level (v2.1.0)
+      // CRITICAL: Use super.log/super.error to avoid infinite recursion
+      const logLevelSetting = this.getSetting('log_level') || 'error';
+      const logLevel = Logger.parseLevel(logLevelSetting);
+      this.logger = new Logger(
+        super.log.bind(this),
+        super.error.bind(this),
+        logLevel,
+        'Device',
+      );
+      this.logger.info('Device initializing with log level:', Logger.levelToString(logLevel));
+
+      // Migration v3.6.2 (R25): before the services start, so the learner gets the new value
+      await this._migrateForgettingFactor();
+
+      // Migration v3.11.0: existing devices keep the fixed price thresholds (before the services start)
+      await this._migratePriceThresholdMode();
+
+      // Migrate hp_connection_status from enum to string type (v0.99.61 migration)
+      // Existing devices have the old enum-type capability which causes "unknown_error_getting_file" errors
+      if (this.hasCapability('hp_connection_status')) {
+        try {
+          // Check if migration flag exists to avoid repeated migrations
+          const migrationFlag = this.getStoreValue('connection_status_migrated_v0_99_61');
+          if (!migrationFlag) {
+            this.log('🔄 Migrating hp_connection_status capability from enum to string type...');
+            await this.removeCapability('hp_connection_status');
+            await this.addCapability('hp_connection_status');
+            await this.setStoreValue('connection_status_migrated_v0_99_61', true);
+            this.log('✅ Successfully migrated hp_connection_status capability to string type');
+          }
+        } catch (error) {
+          this.error('Failed to migrate hp_connection_status capability:', error);
+        }
+      } else {
+        // Add capability for brand new devices
+        try {
+          await this.addCapability('hp_connection_status');
+          await this.setStoreValue('connection_status_migrated_v0_99_61', true);
+          this.log('✅ Added hp_connection_status capability to new device');
+        } catch (error) {
+          this.error('Failed to add hp_connection_status capability:', error);
+        }
+      }
+
+      // Migration: hp_countdowntimer → hp_firmware_mcu (v2.7.0 migration)
+      // DPS 14 was incorrectly named as countdown timer, but actually contains MCU firmware version
+      if (this.hasCapability('hp_countdowntimer')) {
+        try {
+          const migrationFlag = this.getStoreValue('firmware_mcu_migrated_v2_7_0');
+          if (!migrationFlag) {
+            this.log('🔄 Migrating hp_countdowntimer to hp_firmware_mcu...');
+            await this.removeCapability('hp_countdowntimer');
+            await this.addCapability('hp_firmware_mcu');
+            await this.setStoreValue('firmware_mcu_migrated_v2_7_0', true);
+            this.log('✅ Successfully migrated to hp_firmware_mcu');
+          }
+        } catch (error) {
+          this.error('Failed to migrate hp_countdowntimer:', error);
+        }
+      } else if (!this.hasCapability('hp_firmware_mcu')) {
+        // Brand new devices get the new capability directly
+        try {
+          await this.addCapability('hp_firmware_mcu');
+          await this.setStoreValue('firmware_mcu_migrated_v2_7_0', true);
+          this.log('✅ Added hp_firmware_mcu capability to new device');
+        } catch (error) {
+          this.error('Failed to add hp_firmware_mcu capability:', error);
+        }
+      }
+
+      // Add missing curve sensor capabilities for existing devices (v0.99.54 migration)
+      if (!this.hasCapability('hp_sensor_capacity_set')) {
+        try {
+          await this.addCapability('hp_sensor_capacity_set');
+          this.log('✅ Added hp_sensor_capacity_set capability to existing device (v0.99.54 migration)');
+        } catch (error) {
+          this.error('Failed to add hp_sensor_capacity_set capability:', error);
+        }
+      }
+
+      if (!this.hasCapability('hp_picker_countdown_set')) {
+        try {
+          await this.addCapability('hp_picker_countdown_set');
+          this.log('✅ Added hp_picker_countdown_set capability to existing device (v0.99.54 migration)');
+        } catch (error) {
+          this.error('Failed to add hp_picker_countdown_set capability:', error);
+        }
+      }
+
+      // Add connection insights capability for existing devices (v1.0.12 migration)
+      if (!this.hasCapability('hp_connection_active')) {
+        try {
+          await this.addCapability('hp_connection_active');
+          this.log('✅ Added hp_connection_active capability to existing device (v1.0.12 migration)');
+        } catch (error) {
+          this.error('Failed to add hp_connection_active capability:', error);
+        }
+      }
+
+      // Connection diagnostic capabilities (v1.3.12 disconnect count, v3.1.0 zombie count and
+      // telemetry JSON). All three are optional and share the show_disconnect_diagnostic setting,
+      // so devices that never enabled diagnostics are untouched by the v3.1.0 upgrade.
+      const showDisconnectDiagnostic = this.getSettings().show_disconnect_diagnostic === true;
+      for (const capability of DiagnosticCapabilities.connection) {
+        if (showDisconnectDiagnostic && !this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+            this.log(`✅ Added ${capability} capability to existing device (setting enabled)`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        } else if (!showDisconnectDiagnostic && this.hasCapability(capability)) {
+          // Remove if setting disabled (cleanup for devices that had it)
+          try {
+            await this.removeCapability(capability);
+            this.log(`🗑️ Removed ${capability} capability (setting disabled)`);
+          } catch (error) {
+            this.error(`Failed to remove ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Add weather forecast capabilities for existing devices (v2.8.0+: optional via setting)
+      // Only add if setting enabled (defaults to false for new installs)
+      const enableWeatherForecast = this.getSettings().enable_weather_forecast === true;
+      const weatherForecastCapabilities = [
+        'hp_forecast_advice',
+        'hp_optimal_delay',
+        'hp_forecast_cop_correction', // v2.9.0: Weather COP correction %
+      ];
+
+      for (const capability of weatherForecastCapabilities) {
+        if (enableWeatherForecast && !this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+
+            // Initialize default values to avoid empty sensor state
+            if (capability === 'hp_forecast_advice') {
+              await this.setCapabilityValue(capability, 'N/A');
+            } else if (capability === 'hp_optimal_delay') {
+              await this.setCapabilityValue(capability, 0);
+            } else if (capability === 'hp_forecast_cop_correction') {
+              await this.setCapabilityValue(capability, 0);
+            }
+
+            this.log(`✅ Added ${capability} capability (weather forecast enabled)`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        } else if (!enableWeatherForecast && this.hasCapability(capability)) {
+          // Remove if setting disabled (cleanup for devices that had it)
+          try {
+            await this.removeCapability(capability);
+            this.log(`🗑️ Removed ${capability} capability (weather forecast disabled)`);
+          } catch (error) {
+            this.error(`Failed to remove ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Migration v1.4.0+: Add hp_external_indoor_temperature capability to existing devices
+      if (!this.hasCapability('hp_external_indoor_temperature')) {
+        await this.addCapability('hp_external_indoor_temperature');
+        await this.setCapabilityValue('hp_external_indoor_temperature', null);
+        this.log('Migration: Added hp_external_indoor_temperature capability');
+      }
+
+      // Migration: Add building model capabilities to existing devices
+      const buildingModelCapabilities = [
+        'hp_building_c',
+        'hp_building_ua',
+        'hp_building_tau',
+        'hp_building_g',
+        'hp_building_pint',
+        'hp_building_emitter_delay', // ADR-066 (3.7.0)
+      ];
+
+      for (const capability of buildingModelCapabilities) {
+        if (!this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+            this.log(`Migration: Added ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Migration v2.3.5: Add indoor temperature subcapabilities for adaptive control
+      // These replace the legacy hp_external_indoor_temperature with Homey's subcapability architecture
+      if (!this.hasCapability('measure_temperature.indoor')) {
+        try {
+          await this.addCapability('measure_temperature.indoor');
+          this.log('Migration v2.3.5: Added measure_temperature.indoor subcapability');
+
+          // Migrate data from legacy hp_external_indoor_temperature if it exists
+          if (this.hasCapability('hp_external_indoor_temperature')) {
+            const legacyValue = this.getCapabilityValue('hp_external_indoor_temperature') as number | null;
+            if (legacyValue !== null && legacyValue !== undefined) {
+              await this.setCapabilityValue('measure_temperature.indoor', legacyValue);
+              this.log(`Migration v2.3.5: Migrated indoor temperature data: ${legacyValue}°C (from hp_external_indoor_temperature)`);
+            } else {
+              await this.setCapabilityValue('measure_temperature.indoor', null);
+            }
+          } else {
+            await this.setCapabilityValue('measure_temperature.indoor', null);
+          }
+        } catch (error) {
+          this.error('Failed to add measure_temperature.indoor capability:', error);
+        }
+      }
+
+      if (!this.hasCapability('target_temperature.indoor')) {
+        try {
+          await this.addCapability('target_temperature.indoor');
+          await this.setCapabilityValue('target_temperature.indoor', 21.0);
+          this.log('Migration v2.3.5: Added target_temperature.indoor subcapability (default: 21.0°C)');
+        } catch (error) {
+          this.error('Failed to add target_temperature.indoor capability:', error);
+        }
+      }
+
+      // Migration v2.3.7: Add defrost_active_power capability for defrost monitoring
+      if (!this.hasCapability('defrost_active_power')) {
+        try {
+          await this.addCapability('defrost_active_power');
+          await this.setCapabilityValue('defrost_active_power', 0);
+          this.log('Migration v2.3.7: Added defrost_active_power capability (default: 0W)');
+        } catch (error) {
+          this.error('Failed to add defrost_active_power capability:', error);
+        }
+      }
+
+      // Migration v2.4.3: Add energy_prices_data capability for 24h energy price tracking
+      // Only add if price optimizer is enabled (v2.5.0+: capability as feature flag)
+      const priceOptimizerEnabledForMigration = await this.getSetting('price_optimizer_enabled');
+      if (priceOptimizerEnabledForMigration && !this.hasCapability('energy_prices_data')) {
+        try {
+          await this.addCapability('energy_prices_data');
+          await this.setCapabilityValue('energy_prices_data', '{}');
+          this.log('Migration v2.4.3: Added energy_prices_data capability (default: empty JSON)');
+        } catch (error) {
+          this.error('Failed to add energy_prices_data capability:', error);
+        }
+      }
+
+      // Migration v2.5.0: Add energy price optimization display capabilities
+      // Only add if price optimizer is enabled (capability as feature flag)
+      if (priceOptimizerEnabledForMigration) {
+        const priceOptimizationCapabilities = [
+          'hp_cheapest_block_start',
+          'hp_price_forecast_24h',
+          'hp_price_forecast_4h',
+          'hp_price_savings_potential',
+        ];
+
+        for (const capability of priceOptimizationCapabilities) {
+          if (!this.hasCapability(capability)) {
+            try {
+              await this.addCapability(capability);
+
+              // Set appropriate default values
+              let defaultValue: string | number = 'N/A';
+              if (capability === 'hp_price_forecast_24h' || capability === 'hp_price_forecast_4h') {
+                defaultValue = 0;
+              } else if (capability === 'hp_price_savings_potential') {
+                defaultValue = 0;
+              }
+
+              await this.setCapabilityValue(capability, defaultValue);
+              this.log(`Migration v2.5.0: Added ${capability} capability (default: ${defaultValue})`);
+            } catch (error) {
+              this.error(`Failed to add ${capability} capability:`, error);
+            }
+          }
+        }
+      }
+
+      // Migration v2.4.11: Add adaptive_control_diagnostics capability for real-time decision breakdown
+      this.log('🔍 Checking adaptive_control_diagnostics migration...', {
+        hasCapability: this.hasCapability('adaptive_control_diagnostics'),
+      });
+
+      if (!this.hasCapability('adaptive_control_diagnostics')) {
+        try {
+          this.log('➕ Adding adaptive_control_diagnostics capability...');
+          await this.addCapability('adaptive_control_diagnostics');
+          this.log('✅ Capability added, setting initial value...');
+          await this.setCapabilityValue('adaptive_control_diagnostics', '{}');
+          this.log('✅ Migration v2.4.11: Added adaptive_control_diagnostics capability (default: empty JSON)');
+        } catch (error) {
+          this.error('❌ Failed to add adaptive_control_diagnostics capability:', error);
+          this.error('Error details:', {
+            name: (error as Error).name,
+            message: (error as Error).message,
+          });
+        }
+      } else {
+        this.log('ℹ️ adaptive_control_diagnostics capability already exists, skipping migration');
+      }
+
+      // Migration v2.6.1: Add cop_optimizer_diagnostics capability for COP learner status
+      if (!this.hasCapability('cop_optimizer_diagnostics')) {
+        try {
+          this.log('➕ Adding cop_optimizer_diagnostics capability...');
+          await this.addCapability('cop_optimizer_diagnostics');
+          await this.setCapabilityValue('cop_optimizer_diagnostics', '{}');
+          this.log('✅ Migration v2.6.1: Added cop_optimizer_diagnostics capability');
+        } catch (error) {
+          this.error('❌ Failed to add cop_optimizer_diagnostics capability:', error);
+        }
+      }
+
+      // Migration v2.5.10: Add category-specific building insight capabilities
+      // Note: Old capabilities (building_insight_primary/secondary/recommendation) are no longer
+      // removable since their definition files were deleted. Users with old devices should
+      // delete and re-add the device to get clean capabilities.
+      const newBuildingInsightsCapabilities = [
+        'building_insight_insulation',
+        'building_insight_preheating',
+        'building_insight_thermal_storage',
+        'building_insight_profile',
+        'building_insights_diagnostics',
+      ];
+
+      // Add new category-specific capabilities if missing
+      for (const capability of newBuildingInsightsCapabilities) {
+        if (!this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+            // Set default value based on capability type
+            if (capability === 'building_insights_diagnostics') {
+              await this.setCapabilityValue(capability, '{}');
+            } else {
+              await this.setCapabilityValue(capability, '');
+            }
+            this.log(`Migration v2.5.10: Added ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Migration v2.7.0: Add wind/solar capabilities for building model extension
+      const windSolarCapabilities = [
+        'hp_external_wind_speed',
+        'hp_external_solar_power',
+        'hp_external_solar_radiation',
+      ];
+
+      for (const capability of windSolarCapabilities) {
+        if (!this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+            this.log(`Migration v2.7.0: Added ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Migration v2.9.1: Add rolling 24h defrost statistics capabilities
+      const defrost24hCapabilities = ['hp_defrost_count_24h', 'hp_defrost_minutes_24h'];
+      for (const capability of defrost24hCapabilities) {
+        if (!this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+            await this.setCapabilityValue(capability, 0);
+            this.log(`Migration v2.9.1: Added ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Migration v2.9.7: Add data source diagnostic capabilities (uiComponent: null)
+      const dataSourceDiagCapabilities = [
+        'hp_openmeteo_last_fetch',
+        'hp_last_outdoor_temp_received',
+        'hp_last_wind_received',
+        'hp_last_solar_power_received',
+        'hp_last_solar_radiation_received',
+        'hp_last_indoor_temp_received',
+      ];
+      for (const capability of dataSourceDiagCapabilities) {
+        if (!this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+            this.log(`Migration v2.9.7: Added ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        }
+      }
+
+      // Migration v2.9.11: Add performance score sensor capability (insights-enabled)
+      if (!this.hasCapability('hp_performance_score')) {
+        try {
+          await this.addCapability('hp_performance_score');
+          this.log('Migration v2.9.11: Added hp_performance_score capability');
+        } catch (error) {
+          this.error('Failed to add hp_performance_score capability:', error);
+        }
+      }
+
+      // Migration v2.9.18: Add internal power capability (hidden DPS 104 source for energy tracking)
+      if (!this.hasCapability('measure_power.internal')) {
+        try {
+          await this.addCapability('measure_power.internal');
+          this.log('Migration v2.9.18: Added measure_power.internal capability');
+        } catch (error) {
+          this.error('Failed to add measure_power.internal capability:', error);
+        }
+      }
+
+      // Migration v1.4.0+: Cleanup energy pricing capabilities when optimizer disabled
+      // Updated v2.5.0: Added energy_prices_data and 4 display capabilities
+      const priceOptimizerEnabled = await this.getSetting('price_optimizer_enabled');
+      if (!priceOptimizerEnabled) {
+        const energyPriceCapabilities = [
+          'energy_prices_data',
+          'hp_energy_price_current',
+          'hp_energy_price_next',
+          'hp_energy_price_category',
+          'hp_energy_cost_hourly',
+          'hp_energy_cost_daily',
+          'hp_price_forecast_4h',
+          'hp_price_forecast_24h',
+          'hp_cheapest_block_start',
+          'hp_price_savings_potential',
+        ];
+
+        for (const capability of energyPriceCapabilities) {
+          if (this.hasCapability(capability)) {
+            await this.removeCapability(capability);
+            this.log(`Migration: Removed ${capability} (price optimizer disabled)`);
+          }
+        }
+      }
+
+      // Sync optional capabilities with feature settings (v2.3.1, v2.5.10+)
+      try {
+        await this.handleOptionalCapabilities();
+
+        // Special initialization for hp_simulated_target when adaptive control is enabled
+        const adaptiveControlEnabled = this.getSetting('adaptive_control_enabled') === true;
+        if (adaptiveControlEnabled && this.hasCapability('hp_simulated_target')) {
+          const currentTarget = this.getCapabilityValue('target_temperature') as number;
+          if (currentTarget !== null) {
+            await this.setCapabilityValue('hp_simulated_target', currentTarget);
+            this.logger.info('Initialized simulated target with current target:', currentTarget);
+          }
+        }
+      } catch (error) {
+        this.error('Failed to sync optional capabilities with feature settings:', error);
+      }
+
+      // Migration v2.4.3: Cleanup deprecated heating curve capabilities
+      const deprecatedHeatingCurveCapabilities = [
+        'heating_curve_formula',
+        'heating_curve_slope',
+        'heating_curve_intercept',
+        'heating_curve_ref_temp',
+        'heating_curve_ref_outdoor',
+      ];
+
+      for (const capability of deprecatedHeatingCurveCapabilities) {
+        if (this.hasCapability(capability)) {
+          try {
+            await this.removeCapability(capability);
+            this.log(`Migration v2.4.3: Removed deprecated ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to remove deprecated ${capability} capability:`, error);
+          }
+        }
+      }
+
+      const { manifest } = Homey;
+      const myDriver = manifest.drivers[0];
+      // this.log('MyDevice overview:', myDriver);
+
+      const capList = myDriver.capabilities;
+      this.debugLog('Capabilities list:', capList);
+
+      const builtinCapOptList = myDriver.capabilitiesOptions || {};
+      this.debugLog('Capabilities options list:', builtinCapOptList);
+
+      // Extract keys where `setable` exists and is `true`
+      const setableBuiltInCapsKeys = Object.keys(builtinCapOptList).filter(
+        (key) => builtinCapOptList[key].setable === true,
+      );
+      this.debugLog('Setable built-in capabilities from driver manifest:', setableBuiltInCapsKeys);
+
+      // Verify heating curve capability (single capability for both display and control)
+      const heatingCurveCapability = 'hp_enum_countdown_set';
+      this.debugLog(`Checking heating curve capability: ${heatingCurveCapability}`);
+      this.debugLog('Capability exists in manifest:', capList.includes(heatingCurveCapability));
+      this.debugLog('Capability available on device:', this.hasCapability(heatingCurveCapability));
+
+      const setableCustomCapsKeys = Object.keys(manifest.capabilities).filter(
+        (key) => manifest.capabilities[key].setable === true,
+      );
+      this.debugLog('Setable custom capabilities from app manifest:', setableCustomCapsKeys);
+
+      // Default setable built-in capabilities (per Homey SDK standards)
+      const defaultSetableBuiltInCaps = [
+        'target_temperature',
+        'onoff',
+      ];
+
+      // Filter only capabilities that are actually present in the device
+      const availableDefaultSetableCaps = defaultSetableBuiltInCaps.filter((cap) => capList.includes(cap));
+      this.debugLog('Available default setable built-in capabilities:', availableDefaultSetableCaps);
+
+      // Combine and deduplicate setable capabilities
+      this.settableCapabilities = [
+        ...new Set([
+          ...setableBuiltInCapsKeys,
+          ...setableCustomCapsKeys,
+          ...availableDefaultSetableCaps,
+        ]),
+      ];
+      this.debugLog('Setable capabilities:', this.settableCapabilities); // Output: []
+
+      // Register special listener for target_temperature.indoor (v2.3.5 - Subcapability Architecture)
+      // This is a local-only capability (no Tuya DP mapping) for desired room temperature
+      if (this.hasCapability('target_temperature.indoor')) {
+        this.registerCapabilityListener('target_temperature.indoor', async (value) => {
+          this.log(`Desired indoor temperature set to: ${value}°C`);
+
+          try {
+            // Validate temperature is within reasonable range
+            if (typeof value !== 'number' || Number.isNaN(value)) {
+              throw new Error(`Invalid temperature value: ${value}`);
+            }
+
+            if (value < 15 || value > 25) {
+              throw new Error(`Temperature ${value}°C out of valid range (15-25°C)`);
+            }
+
+            // Just store the value locally - no Tuya DP mapping needed
+            await this.setCapabilityValue('target_temperature.indoor', value);
+            this.log(`Desired indoor temperature updated successfully: ${value}°C`);
+
+          } catch (error) {
+            this.error('Error updating desired indoor temperature:', error);
+            throw error;
+          }
+        });
+
+        this.log('Registered listener for target_temperature.indoor (local-only capability)');
+      }
+
+      // Register enhanced capability listeners with validation and error handling
+      this.settableCapabilities.forEach((capability: string) => {
+        // Skip target_temperature.indoor - it has a custom listener registered above
+        if (capability === 'target_temperature.indoor') {
+          this.debugLog(`Skipping ${capability} - custom listener already registered`);
+          return;
+        }
+
+        this.debugLog(`Registering capability listener for ${capability}`);
+        this.registerCapabilityListener(capability, async (value, opts) => {
+          this.log(`${capability} set to`, value);
+
+          try {
+            // Map capability to Tuya DP (data point)
+            const dpArray = this.allCapabilities[capability];
+            const dp = Array.isArray(dpArray) ? dpArray[0] : undefined;
+
+            if (dp === undefined) {
+              const errorMsg = `No Tuya DP mapping found for capability: ${capability}`;
+              this.error(errorMsg);
+              throw new Error(errorMsg);
+            }
+
+            // Validate value based on capability type (pass opts for flow card arguments)
+            const validatedValue = this.validateCapabilityValue(capability, value, opts);
+
+            // OPTIMISTIC UPDATE (v0.99.52): Set capability value immediately for responsive UI
+            // This ensures getCapabilityValue() returns the new value right away, even before
+            // the device confirms the change. If device responds with different value,
+            // updateCapabilitiesFromDps() will override this optimistic value.
+            await this.setCapabilityValue(capability, validatedValue);
+            this.debugLog(`Optimistic update: ${capability} = ${validatedValue}`);
+
+            // Send command to device via ServiceCoordinator or fallback
+            await this.sendTuyaCommand(dp, validatedValue as string | number | boolean);
+
+            // Device response will arrive via updateCapabilitiesFromDps() and will:
+            // 1. Confirm the optimistic update (same value) - no visible change
+            // 2. Override with actual device value if different - ensures device is source of truth
+            //
+            // WHY THIS WORKS:
+            // - Homey SDK: setCapabilityValue() does NOT trigger listeners when called programmatically
+            // - Only USER-initiated changes (via UI/Flow cards) trigger capability listeners
+            // - Therefore: updateCapabilitiesFromDps() calling setCapabilityValue() is SAFE
+            // - No feedback loop, no circular dependencies
+            //
+            // BIDIRECTIONAL SYNC:
+            // - User changes Homey UI → Listener fires → Optimistic update → Send to device → Device confirms
+            // - Tuya app changes device → DPS update → updateCapabilitiesFromDps() → setCapabilityValue() → Homey UI updates
+            // - Both flows work correctly without interference
+
+          } catch (error) {
+            const categorizedError = this.handleTuyaError(error as Error, `Capability update: ${capability}`);
+
+            // Use categorized error message for better user experience
+            const { userMessage } = categorizedError;
+
+            throw new Error(userMessage);
+          }
+        });
+      });
+
+      // Register flow card action listeners
+      await this.registerFlowCardActionListeners();
+
+      // Handle optional capabilities based on settings
+      await this.handleOptionalCapabilities();
+
+      // Reset external power timestamp on device initialization
+      this.lastExternalPowerTimestamp = null;
+
+      // Get Tuya device settings from Homey
+      const id = (this.getStoreValue('device_id') || '').toString().trim();
+      const key = (this.getStoreValue('local_key') || '').toString().trim();
+      const ip = (this.getStoreValue('ip_address') || '').toString().trim();
+      const version = (this.getStoreValue('protocol_version') || '3.3').toString().trim();
+
+      await this.registerDashboard();
+
+      if (!id || !key) {
+        this.error('Tuya credentials missing: device_id or local_key not set.');
+        await this.setUnavailable('Missing Tuya credentials');
+        return;
+      }
+
+      // Initialize Service Coordinator with Tuya configuration
+      this.serviceCoordinator = new ServiceCoordinator({
+        device: this,
+        logger: this.logger.debug.bind(this.logger),
+        onDashboardData: (dps) => this.dashboardState?.receive(dps),
+        onDashboardConnection: (connected) => this.dashboardState?.connection(connected),
+      });
+
+      // Initialize services via coordinator
+      const initResult = await this.serviceCoordinator.initialize({
+        id,
+        key,
+        ip,
+        version,
+      });
+
+      if (!initResult.success || initResult.failedServices.length > 0) {
+        this.error('Service initialization issues:', {
+          failedServices: initResult.failedServices,
+          errors: initResult.errors.map((e) => {
+            if (e instanceof Error) {
+              return e.message;
+            }
+            if (typeof e === 'object' && e !== null) {
+              return JSON.stringify(e);
+            }
+            return String(e);
+          }),
+        });
+        // Continue with fallback to direct methods for failed services
+      }
+
+      // Note: Reconnection interval is managed by ServiceCoordinator's TuyaConnectionService (v0.99.23+)
+      // No need for duplicate legacy reconnection interval
+
+      // Initialize flow cards based on current settings
+      await this.initializeFlowCards();
+
+      // Initialize connection status tracking (v0.99.47)
+      await this.initializeConnectionStatusTracking();
+
+      // Note: Health checks now managed by ServiceCoordinator's CapabilityHealthService
+
+      // Note: Energy tracking intervals managed by ServiceCoordinator's EnergyTrackingService
+
+      // Initialize COP calculation system
+      await this.initializeCOP();
+
+      // Initialize rolling COP calculator
+      await this.initializeRollingCOP();
+
+      // Force refresh trend capability to ensure proper translation
+      await this.forceRefreshTrendCapability();
+
+      // Initialize intelligent energy tracking if enabled
+      if (this.getSetting('enable_intelligent_energy_tracking')) {
+        await this.initializeEnergyTracking();
+        this.log('🔋 Intelligent energy tracking initialized');
+      }
+
+      // Populate read-only info settings with runtime values
+      try {
+        const uptimeSec = os.uptime();
+        const manifestName = this.homey.manifest.name as { en?: string } | string;
+        await this.setSettings({
+          info_app_version: String(this.homey.manifest.version ?? ''),
+          info_app_id: String(this.homey.manifest.id ?? ''),
+          info_app_name: String(
+            (manifestName as { en?: string })?.en ?? manifestName ?? '',
+          ),
+          info_homey_version: String(this.homey.version ?? ''),
+          info_homey_platform: String(this.homey.platform ?? 'local'),
+          info_homey_platform_version: String(this.homey.platformVersion ?? ''),
+          info_node_version: process.version,
+          info_platform: os.platform(),
+          info_arch: os.arch(),
+          info_uptime: `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m`,
+        });
+        this.logger.info('Info settings populated');
+      } catch (error) {
+        this.logger.warn('Failed to populate info settings:', error);
+      }
+
+      // Availability is published by TuyaConnectionService after data confirmation.
+      this.log('✅ Device initialization completed');
+
+    } catch (error) {
+      this.error('❌ Critical error during device initialization:', error);
+      await this.setUnavailable(`Initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`).catch(() => {
+        // Ignore setUnavailable errors during initialization failure
+      });
+      throw error; // Re-throw to let Homey know initialization failed
+    }
+  }
+
+  /**
+   * onAdded is called when the user adds the device, called just after pairing.
+   */
+  async onAdded() {
+    this.log('MyDevice has been added');
+    await this._useAutoPriceThresholds();
+  }
+
+  /**
+   * onSettings is called when the user updates the device's settings.
+   * @param {object} event the onSettings event data
+   * @param {object} event.oldSettings The old settings object
+   * @param {object} event.newSettings The new settings object
+   * @param {string[]} event.changedKeys An array of keys changed since the previous version
+   * @returns {Promise<string|void>} return a custom message that will be displayed
+   */
+  async onSettings({
+    oldSettings,
+    newSettings,
+    changedKeys,
+  }: {
+    oldSettings: { [key: string]: boolean | string | number | undefined | null };
+    newSettings: { [key: string]: boolean | string | number | undefined | null };
+    changedKeys: string[];
+  }): Promise<string | void> {
+    this.log('MyDevice settings changed:', changedKeys);
+    if (changedKeys.includes('dashboard_port')) {
+      const app = this.homey.app as unknown as TuyaDashboardHost;
+      await app.setTuyaDashboardPort(Number(newSettings.dashboard_port ?? 8092));
+    }
+
+    // Reject a maximum water temperature that is not at least SETPOINT_RANGE_MIN_GAP above the minimum
+    if (changedKeys.includes('adaptive_min_setpoint') || changedKeys.includes('adaptive_max_setpoint')) {
+      const minSetpoint = (newSettings.adaptive_min_setpoint as number | null | undefined) ?? 18;
+      const maxSetpoint = resolveMaxSetpoint(
+        newSettings.adaptive_max_setpoint as number | null | undefined,
+        DeviceConstants.ADAPTIVE_MAX_SETPOINT,
+      );
+      if (!isSetpointRangeValid(minSetpoint, maxSetpoint)) {
+        throw new Error(this.homey.__('errors.adaptive_setpoint_range', { gap: SETPOINT_RANGE_MIN_GAP }));
+      }
+    }
+
+    // Handle log level changes (v2.1.0)
+    if (changedKeys.includes('log_level')) {
+      const newLogLevel = Logger.parseLevel(newSettings.log_level as string || 'error');
+      this.logger.setLevel(newLogLevel);
+      this.logger.info('Log level changed to:', Logger.levelToString(newLogLevel));
+    }
+
+    // Handle capability visibility when feature settings change (v2.3.1+)
+    const capabilityRelatedKeys = [
+      'adaptive_control_enabled',
+      'building_model_enabled',
+      'building_insights_enabled',
+    ];
+
+    if (changedKeys.some((key) => capabilityRelatedKeys.includes(key))) {
+      await this.handleOptionalCapabilities();
+      this.logger.info('Capability visibility updated based on settings changes');
+    }
+
+    // Delegate settings changes to ServiceCoordinator first
+    if (this.serviceCoordinator) {
+      try {
+        await this.serviceCoordinator.onSettings(oldSettings, newSettings, changedKeys);
+      } catch (error) {
+        this.error('ServiceCoordinator settings handling failed:', error);
+        // Continue with fallback to direct method handling
+      }
+    }
+
+    // Handle energy tracking settings changes first
+    await this.handleEnergyTrackingSettings(changedKeys, newSettings);
+
+    // Handle reset external energy total
+    if (changedKeys.includes('reset_external_energy_total') && newSettings.reset_external_energy_total === true) {
+      await this.resetExternalEnergyTotal();
+    }
+
+    // Handle reset external energy daily
+    if (changedKeys.includes('reset_external_energy_daily') && newSettings.reset_external_energy_daily === true) {
+      await this.resetExternalEnergyDaily();
+    }
+
+    // ADR-061: reset_building_model wordt uitsluitend afgehandeld door
+    // AdaptiveControlService.onSettings() (via serviceCoordinator.onSettings hierboven) —
+    // het eerdere tweede pad hier veroorzaakte een dubbele reset per toggle-druk
+
+    // Handle device credential changes (for repair scenarios)
+    const credentialKeysChanged = changedKeys.filter(
+      (key) => ['device_id', 'local_key', 'ip_address', 'protocol_version'].includes(key),
+    );
+
+    if (credentialKeysChanged.length > 0) {
+      this.log('🔧 Device credentials changed (repair mode):', credentialKeysChanged);
+
+      // Update store values to match settings
+      for (const key of credentialKeysChanged) {
+        const newValue = newSettings[key];
+        if (newValue && typeof newValue === 'string') {
+          await this.setStoreValue(key, newValue);
+          this.log(`Updated store value: ${key} = ${newValue}`);
+        }
+      }
+
+      // Reinitialize TuyaConnectionService with new credentials
+      if (this.serviceCoordinator) {
+        try {
+          const newConfig = {
+            id: (newSettings.device_id || '').toString().trim(),
+            key: (newSettings.local_key || '').toString().trim(),
+            ip: (newSettings.ip_address || '').toString().trim(),
+            version: (newSettings.protocol_version || '3.3').toString().trim(),
+          };
+
+          this.log('Reinitializing Tuya connection with new credentials...');
+          this.log(`New device: ${newConfig.id} @ ${newConfig.ip} (Protocol: ${newConfig.version})`);
+
+          await this.serviceCoordinator.getTuyaConnection()?.reinitialize(newConfig);
+
+          this.log('✅ Device repaired successfully - reconnected with new credentials');
+
+          return `Device repaired successfully!\n\nNew credentials active:\n- Device ID: ${newConfig.id}\n- IP Address: ${newConfig.ip}\n- Protocol: ${newConfig.version}\n\nConnection established.`;
+
+        } catch (error) {
+          this.error('Failed to reinitialize Tuya connection:', error);
+
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          await this.setUnavailable(`Repair failed: ${errorMessage}`);
+
+          return (
+            `Repair failed: ${errorMessage}\n\n`
+            + 'Please verify:\n'
+            + '- Device ID and Local Key are correct\n'
+            + '- IP address is reachable\n'
+            + '- Protocol version matches your device\n\n'
+            + 'Connection will retry automatically.'
+          );
+        }
+      } else {
+        this.log('ServiceCoordinator not available - credentials updated but connection not reinitialized');
+        return 'Credentials updated in settings. Please restart the device to apply changes.';
+      }
+    }
+
+    // Handle connection diagnostic capability visibility (v1.3.12, extended v3.1.0)
+    if (changedKeys.includes('show_disconnect_diagnostic')) {
+      const showDisconnectDiagnostic = newSettings.show_disconnect_diagnostic === true;
+
+      for (const capability of DiagnosticCapabilities.connection) {
+        if (showDisconnectDiagnostic && !this.hasCapability(capability)) {
+          // Enable: Add capability
+          try {
+            await this.addCapability(capability);
+            this.log(`✅ Enabled ${capability} capability`);
+
+            // Seed the disconnect counter with the value already tracked in the store.
+            if (capability === 'hp_daily_disconnect_count' && this.serviceCoordinator) {
+              const count = await this.getStoreValue('daily_disconnect_count') || 0;
+              await this.setCapabilityValue('hp_daily_disconnect_count', count);
+            }
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        } else if (!showDisconnectDiagnostic && this.hasCapability(capability)) {
+          // Disable: Remove capability
+          try {
+            await this.removeCapability(capability);
+            this.log(`🗑️ Disabled ${capability} capability`);
+          } catch (error) {
+            this.error(`Failed to remove ${capability} capability:`, error);
+          }
+        }
+      }
+    }
+
+    // Handle weather forecast capability visibility (v2.8.0+)
+    if (changedKeys.includes('enable_weather_forecast')) {
+      const enableWeatherForecast = newSettings.enable_weather_forecast === true;
+      const weatherForecastCapabilities = [
+        'hp_forecast_advice',
+        'hp_optimal_delay',
+        'hp_forecast_cop_correction', // v2.9.0: Weather COP correction %
+      ];
+
+      for (const capability of weatherForecastCapabilities) {
+        if (enableWeatherForecast && !this.hasCapability(capability)) {
+          try {
+            await this.addCapability(capability);
+
+            // Initialize default values to avoid empty sensor state
+            if (capability === 'hp_forecast_advice') {
+              await this.setCapabilityValue(capability, 'N/A');
+            } else if (capability === 'hp_optimal_delay') {
+              await this.setCapabilityValue(capability, 0);
+            } else if (capability === 'hp_forecast_cop_correction') {
+              await this.setCapabilityValue(capability, 0);
+            }
+
+            this.log(`✅ Enabled weather forecast capability: ${capability}`);
+          } catch (error) {
+            this.error(`Failed to add ${capability} capability:`, error);
+          }
+        } else if (!enableWeatherForecast && this.hasCapability(capability)) {
+          try {
+            await this.removeCapability(capability);
+            this.log(`🗑️ Disabled weather forecast capability: ${capability}`);
+          } catch (error) {
+            this.error(`Failed to remove ${capability} capability:`, error);
+          }
+        }
+      }
+    }
+
+    // Check if any flow card settings were changed
+    const flowSettingsChanged = changedKeys.some((key) => key.startsWith('flow_'));
+
+    if (flowSettingsChanged) {
+      this.log('Flow card settings changed, updating flow card availability');
+
+      // Log the changes for debugging
+      changedKeys.forEach((key) => {
+        if (key.startsWith('flow_')) {
+          this.log(`${key}: ${oldSettings[key]} → ${newSettings[key]}`);
+        }
+      });
+
+      return 'Flow card settings updated. Changes will take effect immediately.';
+    }
+
+    // Handle force reconnect request (v0.99.66)
+    if (changedKeys.includes('force_reconnect') && newSettings.force_reconnect === true) {
+      this.log('🔄 Manual reconnect triggered by user');
+
+      try {
+        // Get TuyaConnectionService from ServiceCoordinator
+        const tuyaService = this.serviceCoordinator?.getTuyaConnection();
+        if (!tuyaService) {
+          throw new Error('TuyaConnectionService not available');
+        }
+
+        // Trigger force reconnect
+        await tuyaService.forceReconnect();
+        this.log('✅ Force reconnect completed');
+
+        // Reset the checkbox after operation completes
+        this.homey.setTimeout(async () => {
+          try {
+            await this.setSettings({ force_reconnect: false });
+            this.log('🔄 Force reconnect checkbox reset');
+          } catch (error) {
+            this.error('Failed to reset force reconnect checkbox:', error);
+          }
+        }, DeviceConstants.SETTINGS_DEFER_DELAY_MS);
+
+        return 'Force reconnect initiated. Check connection status capability for result.';
+      } catch (error) {
+        this.error('Failed to force reconnect:', error);
+
+        // Still reset the checkbox even on failure
+        this.homey.setTimeout(async () => {
+          try {
+            await this.setSettings({ force_reconnect: false });
+          } catch (err) {
+            this.error('Failed to reset force reconnect checkbox after error:', err);
+          }
+        }, DeviceConstants.SETTINGS_DEFER_DELAY_MS);
+
+        throw new Error(`Failed to reconnect: ${error}`);
+      }
+    }
+
+    // Handle capability diagnostics request
+    if (changedKeys.includes('capability_diagnostics') && newSettings.capability_diagnostics === true) {
+      const diagnostics = this.serviceCoordinator?.getCapabilityHealth()?.generateDiagnosticsReport() ?? {};
+      const diagnosticReport = JSON.stringify(diagnostics, null, 2);
+
+      this.log('Capability diagnostic report generated:', diagnostics);
+
+      // Reset the trigger setting after onSettings completes to avoid race condition
+      this.homey.setTimeout(async () => {
+        try {
+          await this.setSettings({ capability_diagnostics: false });
+        } catch (error) {
+          this.error('Failed to reset diagnostics checkbox:', error);
+        }
+      }, DeviceConstants.SETTINGS_DEFER_DELAY_MS);
+
+      return `Capability Diagnostics Report:\n\n${diagnosticReport}`;
+    }
+
+    // Handle power measurement settings
+    if (changedKeys.includes('enable_power_measurements')) {
+      const enablePower = newSettings.enable_power_measurements;
+
+      // Auto-manage all power-related flow alert settings
+      const powerFlowSettings = ['flow_power_alerts', 'flow_voltage_alerts', 'flow_current_alerts'];
+      const settingsToUpdate: Record<string, string> = {};
+
+      if (!enablePower) {
+        // Disable all power-related flow alerts when power measurements are disabled
+        for (const setting of powerFlowSettings) {
+          if (oldSettings[setting] !== 'disabled') {
+            settingsToUpdate[setting] = 'disabled';
+          }
+        }
+      } else if (enablePower && oldSettings.enable_power_measurements === false) {
+        // Reset all to auto when power measurements are re-enabled
+        for (const setting of powerFlowSettings) {
+          settingsToUpdate[setting] = 'auto';
+        }
+      }
+
+      // Only call setSettings once if there are settings to update
+      if (Object.keys(settingsToUpdate).length > 0) {
+        // Use setTimeout to avoid race condition with onSettings still being pending
+        this.homey.setTimeout(async () => {
+          try {
+            await this.setSettings(settingsToUpdate);
+            this.log('Auto-updated power-related flow alerts:', Object.keys(settingsToUpdate));
+            // Trigger flow cards update after settings are applied
+            await this.updateFlowCards();
+          } catch (error) {
+            this.error('Failed to update power-related flow alert settings:', error);
+          }
+        }, DeviceConstants.SETTINGS_DEFER_DELAY_MS);
+      }
+
+      await this.handleOptionalCapabilities();
+      this.log('Power measurement settings updated');
+      return 'Power measurement settings updated. Capabilities and flow cards will be updated shortly.';
+    }
+
+    // Handle energy price optimizer toggle (v1.4.0+)
+    // Updated v2.5.0: Added energy_prices_data and 4 display capabilities as feature flags
+    if (changedKeys.includes('price_optimizer_enabled')) {
+      const energyPriceCapabilities = [
+        'energy_prices_data',
+        'hp_energy_price_current',
+        'hp_energy_price_next',
+        'hp_energy_price_category',
+        'hp_energy_cost_hourly',
+        'hp_energy_cost_daily',
+        'hp_price_forecast_4h',
+        'hp_price_forecast_24h',
+        'hp_cheapest_block_start',
+        'hp_price_savings_potential',
+      ];
+
+      if (newSettings.price_optimizer_enabled) {
+        // Add capabilities when enabling
+        for (const capability of energyPriceCapabilities) {
+          if (!this.hasCapability(capability)) {
+            await this.addCapability(capability);
+
+            // Set appropriate default values
+            let defaultValue: string | number | null = null;
+            if (capability === 'energy_prices_data') {
+              defaultValue = '{}';
+            } else if (capability === 'hp_price_forecast_24h' || capability === 'hp_price_forecast_4h') {
+              defaultValue = 0;
+            } else if (capability === 'hp_price_savings_potential') {
+              defaultValue = 0;
+            } else if (capability === 'hp_cheapest_block_start') {
+              defaultValue = 'N/A';
+            }
+
+            await this.setCapabilityValue(capability, defaultValue);
+            this.log(`Added energy pricing capability: ${capability}`);
+          }
+        }
+      } else {
+        // Remove capabilities when disabling
+        for (const capability of energyPriceCapabilities) {
+          if (this.hasCapability(capability)) {
+            await this.removeCapability(capability);
+            this.log(`Removed energy pricing capability: ${capability}`);
+          }
+        }
+      }
+
+      this.log('Energy price optimizer settings updated');
+      return 'Energy price optimizer settings updated. Capabilities will be updated shortly.';
+    }
+
+    // Handle slider controls settings
+    if (changedKeys.includes('enable_slider_controls')) {
+      // For now, no related flow settings to auto-manage for sliders
+      // But we use the same pattern for consistency and future extensibility
+      const settingsToUpdate: Record<string, string> = {};
+
+      // No additional settings to auto-manage currently, but pattern preserved
+      // for future enhancements (e.g., slider-related flow cards)
+
+      // Only call setSettings if there are settings to update
+      if (Object.keys(settingsToUpdate).length > 0) {
+        // Use setTimeout to avoid race condition with onSettings still being pending
+        this.homey.setTimeout(async () => {
+          try {
+            await this.setSettings(settingsToUpdate);
+            this.log('Auto-updated slider-related settings:', Object.keys(settingsToUpdate));
+          } catch (error) {
+            this.error('Failed to update slider-related settings:', error);
+          }
+        }, DeviceConstants.SETTINGS_DEFER_DELAY_MS);
+      }
+
+      await this.handleOptionalCapabilities();
+      this.log('Slider control settings updated');
+      return 'Slider control settings updated. Capabilities will be updated shortly.';
+    }
+
+    // Handle curve controls settings (v0.99.54+)
+    if (changedKeys.includes('enable_curve_controls')) {
+      await this.handleOptionalCapabilities();
+      this.log('Curve control picker settings updated');
+      return 'Curve control picker settings updated. Picker capabilities visibility will be updated shortly. Sensor capabilities remain always visible.';
+    }
+
+    // Handle COP settings changes
+    const copSettingsChanged = changedKeys.some((key) => key.startsWith('cop_') || key.startsWith('enable_cop') || key.startsWith('external_'));
+
+    if (copSettingsChanged) {
+      this.log('COP settings changed, reloading COP configuration');
+
+      // Auto-disable cop_optimizer_enabled when cop_calculation_enabled is turned off (v2.5.0)
+      // The optimizer requires COP calculation data to function
+      if (changedKeys.includes('cop_calculation_enabled') && newSettings.cop_calculation_enabled === false) {
+        if (newSettings.cop_optimizer_enabled === true || oldSettings.cop_optimizer_enabled === true) {
+          this.log('⚠️ COP optimizer auto-disabled: requires cop_calculation_enabled');
+          this.homey.setTimeout(async () => {
+            try {
+              await this.setSettings({ cop_optimizer_enabled: false });
+              this.log('✅ cop_optimizer_enabled set to false (dependency on cop_calculation_enabled)');
+            } catch (error) {
+              this.error('Failed to auto-disable cop_optimizer_enabled:', error);
+            }
+          }, DeviceConstants.SETTINGS_DEFER_DELAY_MS);
+        }
+      }
+
+      // Reload COP settings
+      await this.loadCOPSettings();
+
+      // Restart COP calculation if enabled
+      if (this.copSettings?.enableCOP && this.hasCapability('hp_cop')) {
+        this.stopCOPCalculationInterval();
+        this.stopIdleMonitoring();
+        this.startCOPCalculationInterval();
+        this.startIdleMonitoring();
+        this.categoryLog('cop', 'COP calculation and idle monitoring restarted with new settings');
+
+        // Also restart SCOP updates if available
+        if (this.hasCapability('hp_scop') && this.scopCalculator) {
+          this.stopSCOPUpdateInterval();
+          this.startSCOPUpdateInterval();
+          this.categoryLog('scop', 'SCOP updates restarted with COP settings');
+        }
+      } else {
+        this.stopCOPCalculationInterval();
+        this.stopIdleMonitoring();
+        this.stopSCOPUpdateInterval();
+        this.categoryLog('cop', 'COP calculation, idle monitoring, and SCOP updates stopped');
+      }
+
+      return 'COP and SCOP settings updated and calculation systems restarted.';
+    }
+
+    return undefined;
+  }
+
+  /**
+   * onRenamed is called when the user updates the device's name.
+   * This method can be used this to synchronise the name to the device.
+   * @param {string} _name The new name
+   */
+  async onRenamed(_name: string) {
+    this.log('MyDevice was renamed');
+  }
+
+  /**
+   * Handle optional capabilities based on settings
+   */
+  private async handleOptionalCapabilities(): Promise<void> {
+    const enablePowerMeasurements = this.getSetting('enable_power_measurements') ?? true;
+    const enableSliderControls = this.getSetting('enable_slider_controls') ?? true;
+    const enableCOPCalculation = this.getSetting('cop_calculation_enabled') !== false; // default true
+    const enableCurveControls = this.getSetting('enable_curve_controls') ?? false; // default false (v0.99.54+)
+    const enableBuildingModel = this.getSetting('building_model_enabled') ?? false; // default false
+    const enableBuildingInsights = this.getSetting('building_insights_enabled') ?? false; // default false
+    const enableAdaptiveControl = this.getSetting('adaptive_control_enabled') ?? false; // default false
+
+    const powerCapabilities = [
+      'measure_power',
+      'meter_power.power_consumption',
+      'meter_power.electric_total',
+      'measure_current.cur_current',
+      'measure_current.b_cur',
+      'measure_current.c_cur',
+      'measure_voltage.voltage_current',
+      'measure_voltage.bv',
+      'measure_voltage.cv',
+    ];
+
+    const sliderCapabilities = [
+      'hp_enum_volume_set',
+      'hp_enum_water_mode',
+      'hp_hotwater',
+    ];
+
+    const copCapabilities = [
+      'hp_cop',
+      'hp_cop_method',
+      'hp_external_power',
+      'hp_external_energy_total',
+      'hp_external_energy_daily',
+      'hp_external_flow',
+      'hp_external_ambient',
+      'hp_scop',
+      'hp_scop_quality',
+      'hp_cop_daily',
+      'hp_cop_weekly',
+      'hp_cop_monthly',
+      'hp_cop_trend',
+    ];
+
+    // Curve control picker capabilities (v0.99.54+)
+    // Sensor capabilities (hp_enum_countdown_set, hp_sensor_capacity_set) always remain visible
+    const curvePickerCapabilities = [
+      'hp_enum_capacity_set', // Hot water curve picker
+      'hp_picker_countdown_set', // Heating curve picker
+    ];
+
+    // Building Model capabilities (v2.5.10+, v2.7.2+)
+    const buildingModelCapabilities = [
+      'hp_building_c',
+      'hp_building_ua',
+      'hp_building_tau',
+      'hp_building_g',
+      'hp_building_pint',
+      'hp_building_emitter_delay', // ADR-066 (3.7.0)
+      'building_model_diagnostics',
+      'hp_external_wind_speed', // v2.7.2: Wind correction input
+      'hp_external_solar_power', // v2.7.2: Solar radiation input
+      'hp_external_solar_radiation', // v2.7.2: Solar radiation input
+    ];
+
+    // Building Insights capabilities (v2.5.10+)
+    const buildingInsightsCapabilities = [
+      'building_insight_insulation',
+      'building_insight_preheating',
+      'building_insight_thermal_storage',
+      'building_insight_profile',
+      'building_insights_diagnostics',
+    ];
+
+    // Adaptive Control capabilities (v2.3.1+)
+    const adaptiveControlCapabilities = [
+      'hp_simulated_target',
+      'target_temperature.indoor',
+      'measure_temperature.indoor',
+      'hp_external_indoor_temperature',
+      'adaptive_control_diagnostics',
+    ];
+
+    // Process power capabilities
+    await this.processCapabilityGroup(powerCapabilities, enablePowerMeasurements, 'power measurement');
+
+    // Process slider capabilities
+    await this.processCapabilityGroup(sliderCapabilities, enableSliderControls, 'slider control');
+
+    // Process COP capabilities
+    await this.processCapabilityGroup(copCapabilities, enableCOPCalculation, 'COP calculation');
+
+    // Process curve control picker capabilities (v0.99.54+)
+    await this.processCapabilityGroup(curvePickerCapabilities, enableCurveControls, 'curve control picker');
+
+    // Process building model capabilities (v2.5.10+)
+    await this.processCapabilityGroup(buildingModelCapabilities, enableBuildingModel, 'building model');
+
+    // Process building insights capabilities (v2.5.10+)
+    await this.processCapabilityGroup(buildingInsightsCapabilities, enableBuildingInsights, 'building insights');
+
+    // Process adaptive control capabilities (v2.3.1+)
+    await this.processCapabilityGroup(adaptiveControlCapabilities, enableAdaptiveControl, 'adaptive control');
+  }
+
+  /**
+   * Write capability options only when they actually differ from the current ones.
+   *
+   * `setCapabilityOptions()` rewrites the device manifest and makes Homey broadcast a
+   * device-update to every client. The Flow editor rebuilds its device list on that event
+   * and re-evaluates the `capabilities=` filters of Flow cards, which makes devices flicker
+   * in and out of Flow card device pickers. Writing unconditionally therefore caused a burst
+   * of manifest updates on every `handleOptionalCapabilities()` run.
+   *
+   * The patch is merged over the existing options instead of replacing them, so writers that
+   * own different keys (e.g. `insights` here vs. `title` in BuildingModelService) no longer
+   * overwrite each other.
+   *
+   * @param capability - Capability id to update
+   * @param patch - Option keys to apply
+   * @returns true when a write was performed, false when the options were already up to date
+   */
+  private async setCapabilityOptionsIfChanged(
+    capability: string,
+    patch: Record<string, unknown>,
+  ): Promise<boolean> {
+    let current: Record<string, unknown> = {};
+    try {
+      current = (this.getCapabilityOptions(capability) ?? {}) as Record<string, unknown>;
+    } catch {
+      // Capability has no options set yet (or does not exist) - treat as empty and let
+      // setCapabilityOptions() below surface any real error.
+    }
+
+    const hasChange = Object.entries(patch).some(([key, value]) => current[key] !== value);
+    if (!hasChange) {
+      return false;
+    }
+
+    await this.setCapabilityOptions(capability, { ...current, ...patch });
+    return true;
+  }
+
+  /**
+   * Process a group of capabilities based on enable/disable setting
+   */
+  private async processCapabilityGroup(
+    capabilities: string[],
+    enableFeature: boolean,
+    featureName: string,
+  ): Promise<void> {
+    for (const capability of capabilities) {
+      try {
+        if (enableFeature) {
+          if (!this.hasCapability(capability)) {
+            await this.addCapability(capability);
+            this.log(`Added optional ${featureName} capability: ${capability}`);
+          }
+          // Enable insights when feature is enabled
+          try {
+            const written = await this.setCapabilityOptionsIfChanged(capability, { insights: true });
+            if (written) {
+              this.debugLog(`Enabled insights for ${featureName} capability: ${capability}`);
+            }
+          } catch (error) {
+            this.debugLog(`Could not enable insights for ${capability}:`, error);
+          }
+        } else if (this.hasCapability(capability)) {
+          // Feature is disabled - remove capability if it exists
+          // Disable insights before removing capability to clear historical data visibility
+          try {
+            const written = await this.setCapabilityOptionsIfChanged(capability, { insights: false });
+            if (written) {
+              this.debugLog(`Disabled insights for ${featureName} capability: ${capability}`);
+            }
+          } catch (error) {
+            this.debugLog(`Could not disable insights for ${capability}:`, error);
+          }
+
+          await this.removeCapability(capability);
+          this.log(`Removed optional ${featureName} capability: ${capability}`);
+        }
+      } catch (error) {
+        // Enhanced error handling with more context
+        this.error(`Failed to process ${featureName} capability ${capability}:`, error);
+
+        // For validation errors during capability operations, log additional context
+        if (error instanceof Error && error.message.includes('Invalid Capability')) {
+          this.error(`Capability validation error for ${capability}. This may be due to timing during device initialization.`);
+          this.log(`Settings: ${featureName} = ${enableFeature}, capability exists = ${this.hasCapability(capability)}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate capability values based on capability type
+   * @param capability - The capability name to validate
+   * @param value - The value to validate
+   * @param opts - Optional flow card arguments (e.g., decimal_handling for target_temperature)
+   * @returns The validated and possibly converted value
+   * @throws Error if value is invalid for the capability
+   */
+  private validateCapabilityValue(capability: string, value: unknown, opts?: { 'decimal_handling'?: 'round' | 'error' }): unknown {
+    // Check for null/undefined values first
+    if (value === null || value === undefined) {
+      throw new Error(`Value for capability ${capability} cannot be null or undefined`);
+    }
+    switch (capability) {
+      case 'target_temperature': {
+        const temp = Number(value);
+
+        // Validate range
+        if (Number.isNaN(temp) || temp < DeviceConstants.MIN_TARGET_TEMPERATURE || temp > DeviceConstants.MAX_TARGET_TEMPERATURE) {
+          throw new Error(`Temperature ${temp}°C is outside valid range (${DeviceConstants.MIN_TARGET_TEMPERATURE}-${DeviceConstants.MAX_TARGET_TEMPERATURE}°C)`);
+        }
+
+        // Check for decimals
+        const hasDecimals = temp !== Math.round(temp);
+
+        if (hasDecimals) {
+          // Get decimal handling preference (default: 'round')
+          const decimalHandling = opts?.decimal_handling || 'round';
+
+          if (decimalHandling === 'round') {
+            // Auto-round to nearest integer
+            const roundedTemp = Math.round(temp);
+            this.logger.warn(`Target temperature ${temp}°C rounded to ${roundedTemp}°C`);
+            return roundedTemp;
+          }
+          // Show error - decimal not allowed
+          throw new Error(`Temperature must be a whole number (received: ${temp}°C). Enable auto-rounding or use a whole number.`);
+
+        }
+
+        return temp;
+      }
+
+      case 'onoff':
+        return Boolean(value);
+
+      case 'hp_enum_mode':
+      case 'hp_enum_countdown_set':
+      case 'hp_enum_work_mode':
+        if (typeof value !== 'string') {
+          throw new Error(`Invalid enum value for ${capability}: ${value}`);
+        }
+        return value;
+
+      case 'hp_hotwater': {
+        const hotWaterTemp = Number(value);
+        if (Number.isNaN(hotWaterTemp) || hotWaterTemp < DeviceConstants.MIN_HOTWATER_TEMPERATURE || hotWaterTemp > DeviceConstants.MAX_HOTWATER_TEMPERATURE) {
+          throw new Error(`Hot water temperature ${hotWaterTemp}°C is outside valid range (${DeviceConstants.MIN_HOTWATER_TEMPERATURE}-${DeviceConstants.MAX_HOTWATER_TEMPERATURE}°C)`);
+        }
+        return hotWaterTemp;
+      }
+
+      default:
+        return value;
+    }
+  }
+
+  /**
+   * Register custom/complex device-level ACTION cards (v2.6.1 refactored)
+   *
+   * All action cards are now handled by FlowCardManagerService.registerExternalDataActionCards()
+   * This method is kept for backwards compatibility and future device-specific cards.
+   */
+  private async registerFlowCardActionListeners(): Promise<void> {
+    this.debugLog('registerFlowCardActionListeners: All action cards now handled by FlowCardManagerService (v2.6.1)');
+
+    // v2.6.1: Refactored the following action cards to FlowCardManagerService:
+    // - receive_external_power_data
+    // - receive_external_flow_data
+    // - receive_external_ambient_data
+    // - receive_external_indoor_temperature
+    // - receive_external_energy_prices
+    // - diagnose_building_model
+    // - diagnose_cop_optimizer
+
+    // This method can be used for future device-specific action cards
+    // that require direct access to device internals not available in FlowCardManagerService
+  }
+
+  /**
+   * Intelligent power source selection for measure_power capability
+   * Prioritizes external power measurements when available, falls back to internal sensors
+   */
+  private async updateIntelligentPowerMeasurement(): Promise<void> {
+    // Delegate to EnergyTrackingService via ServiceCoordinator
+    await this.serviceCoordinator?.getEnergyTracking()?.updateIntelligentPowerMeasurement();
+  }
+
+  // Note: Internal power measurement now handled by EnergyTrackingService via ServiceCoordinator
+
+  // Note: Power estimation calculation now handled by EnergyTrackingService via ServiceCoordinator
+
+  /**
+   * Handle settings changes for intelligent energy tracking
+   */
+  private async handleEnergyTrackingSettings(changedKeys: string[], newSettings: Record<string, unknown>): Promise<void> {
+    if (changedKeys.includes('enable_intelligent_energy_tracking')) {
+      const enabled = newSettings.enable_intelligent_energy_tracking;
+      this.log(`🔋 Intelligent energy tracking ${enabled ? 'enabled' : 'disabled'}`);
+
+      if (enabled) {
+        // Initialize energy tracking when enabled
+        await this.initializeEnergyTracking();
+        // Note: Energy tracking interval managed by ServiceCoordinator's EnergyTrackingService
+        // Immediately update power measurement when enabled
+        await this.updateIntelligentPowerMeasurement();
+      } else {
+        // Note: Energy tracking interval stop managed by ServiceCoordinator's EnergyTrackingService
+      }
+    }
+  }
+
+  /**
+   * Initialize software energy tracking system
+   */
+  private async initializeEnergyTracking(): Promise<void> {
+    try {
+      // Initialize energy tracking timestamp if not exists
+      const lastUpdate = await this.getStoreValue('last_energy_update');
+      if (!lastUpdate) {
+        await this.setStoreValue('last_energy_update', Date.now());
+        this.log('🔋 Energy tracking initialized');
+      }
+
+      // Initialize external energy tracking timestamp if not exists
+      const lastExternalUpdate = await this.getStoreValue('last_external_energy_update');
+      if (!lastExternalUpdate) {
+        await this.setStoreValue('last_external_energy_update', Date.now());
+        this.log('🔌 External energy tracking initialized');
+      }
+
+      // Initialize cumulative energy if meter capabilities are zero/null
+      if (this.hasCapability('meter_power.electric_total')) {
+        const currentTotal = this.getCapabilityValue('meter_power.electric_total');
+        if (!currentTotal || currentTotal === 0) {
+          // Check if we have stored cumulative energy from previous sessions
+          const storedTotal = await this.getStoreValue('cumulative_energy_kwh') || 0;
+          if (storedTotal > 0) {
+            await this.setCapabilityValue('meter_power.electric_total', storedTotal);
+            this.log(`🔋 Restored cumulative energy: ${storedTotal} kWh`);
+          }
+        }
+      }
+
+      // Initialize external energy tracking capability
+      if (this.hasCapability('hp_external_energy_total')) {
+        const currentExternalTotal = this.getCapabilityValue('hp_external_energy_total');
+        if (!currentExternalTotal || currentExternalTotal === 0) {
+          // Check if we have stored external energy from previous sessions
+          const storedExternalTotal = await this.getStoreValue('external_cumulative_energy_kwh') || 0;
+          if (storedExternalTotal > 0) {
+            await this.setCapabilityValue('hp_external_energy_total', storedExternalTotal);
+            this.log(`🔌 Restored external energy: ${storedExternalTotal} kWh`);
+          }
+        }
+      }
+
+      // Initialize external daily energy tracking capability
+      if (this.hasCapability('hp_external_energy_daily')) {
+        // ALWAYS check store value for corruption, even if capability has a value
+        const storedExternalDaily = await this.getStoreValue('external_daily_consumption_kwh') || 0;
+        const currentExternalDaily = this.getCapabilityValue('hp_external_energy_daily') || 0;
+
+        // Sanity check: daily consumption > 150 kWh is unrealistic (likely corrupt data)
+        // Realistic max for heat pump: ~80 kWh/day, theoretical max 24/7: ~240 kWh
+        const MAX_REALISTIC_DAILY_KWH = 150;
+
+        // Check both store AND capability for corruption
+        if (storedExternalDaily > MAX_REALISTIC_DAILY_KWH || currentExternalDaily > MAX_REALISTIC_DAILY_KWH) {
+          // Corrupt data detected - reset to 0 and clear store
+          await this.setCapabilityValue('hp_external_energy_daily', 0);
+          await this.setStoreValue('external_daily_consumption_kwh', 0);
+          this.log(`⚠️ Corrupt daily energy data detected (store: ${storedExternalDaily} kWh, capability: ${currentExternalDaily} kWh) - reset to 0`);
+        } else if (currentExternalDaily === 0 && storedExternalDaily > 0) {
+          // Valid stored data and capability is 0 - restore from store
+          await this.setCapabilityValue('hp_external_energy_daily', storedExternalDaily);
+          this.log(`🔌 Restored external daily energy: ${storedExternalDaily} kWh`);
+        }
+      }
+
+      // Reset daily energy at midnight
+      this.scheduleDailyEnergyReset();
+
+    } catch (error) {
+      this.error('Error initializing energy tracking:', error);
+    }
+  }
+
+  // Note: Cumulative energy tracking now handled by EnergyTrackingService via ServiceCoordinator
+
+  /**
+   * Schedule daily energy reset at local midnight (Homey timezone)
+   * Rescheduled after each reset so days of 23 or 25 hours (DST changes) keep the reset at 00:00
+   *
+   * @param from - Instant to plan from; after a reset this is the midnight that just passed
+   */
+  private scheduleDailyEnergyReset(from: Date = new Date()): void {
+    // CRITICAL: Clear existing timer BEFORE creating a new one (v2.0.2 re-init protection)
+    // Prevents multiple midnight reset timers if this function is called multiple times
+    if (this.dailyEnergyResetTimeout) {
+      clearTimeout(this.dailyEnergyResetTimeout);
+      this.dailyEnergyResetTimeout = null;
+      this.log('Cleared existing daily energy reset timeout to prevent accumulation');
+    }
+
+    const timeZone = resolveHomeyTimezone(this.homey);
+    const midnight = nextLocalMidnight(from, timeZone);
+    const msUntilMidnight = Math.max(0, midnight.getTime() - Date.now());
+
+    // Schedule reset - tracked for cleanup to prevent memory leak
+    this.dailyEnergyResetTimeout = this.homey.setTimeout(() => {
+      this.dailyEnergyResetTimeout = null; // Clear reference after execution
+      this.resetDailyEnergy()
+        .catch((error) => this.error('Failed to reset daily energy at midnight:', error));
+      // Plan from this midnight, so a timer firing a few ms early cannot pick the same midnight again
+      this.scheduleDailyEnergyReset(midnight);
+    }, msUntilMidnight);
+
+    this.log(`🕛 Daily energy reset scheduled in ${Math.round(msUntilMidnight / 60000)} minutes `
+      + `(${formatHourMinute(midnight, timeZone)} ${timeZone})`);
+  }
+
+  /**
+   * Reset daily energy consumption at midnight
+   */
+  private async resetDailyEnergy(): Promise<void> {
+    try {
+      // Reset internal daily energy consumption
+      if (this.hasCapability('meter_power.power_consumption')) {
+        await this.setCapabilityValue('meter_power.power_consumption', 0);
+        await this.setStoreValue('daily_consumption_kwh', 0);
+        this.log('🔄 Internal daily energy consumption reset to 0 kWh');
+      }
+
+      // Reset external daily energy consumption
+      if (this.hasCapability('hp_external_energy_daily')) {
+        await this.setCapabilityValue('hp_external_energy_daily', 0);
+        await this.setStoreValue('external_daily_consumption_kwh', 0);
+        this.log('🔄 External daily energy consumption reset to 0 kWh');
+      }
+
+      // Reset daily disconnect counter at midnight (v2.9.18)
+      await this.serviceCoordinator?.getTuyaConnection()?.resetDailyDisconnectCounter();
+      this.log('🔄 Daily disconnect counter reset to 0');
+    } catch (error) {
+      this.error('Error resetting daily energy:', error);
+    }
+  }
+
+  /**
+   * onDeleted is called when the user deleted the device.
+   */
+  async onDeleted() {
+    this.log('MyDevice has been deleted');
+    this.dashboardState?.destroy();
+    this.dashboardState = null;
+    try {
+      await (this.homey.app as unknown as TuyaDashboardHost).tuyaDashboard.unregister(this.dashboardId());
+    } catch (error) {
+      this.error('Tuya dashboard cleanup failed', error);
+    }
+
+    // Memory leak prevention: Stop all tracked timers (v2.0.1+)
+    if (this.connectionStatusInterval) {
+      clearInterval(this.connectionStatusInterval);
+      this.connectionStatusInterval = null;
+      this.log('Connection status interval cleared');
+    }
+
+    if (this.dailyEnergyResetTimeout) {
+      clearTimeout(this.dailyEnergyResetTimeout);
+      this.dailyEnergyResetTimeout = null;
+      this.log('Daily energy reset timeout cleared');
+    }
+
+    if (this.flowCardInitRetryTimeout) {
+      clearTimeout(this.flowCardInitRetryTimeout);
+      this.flowCardInitRetryTimeout = null;
+      this.log('Flow card init retry timeout cleared');
+    }
+
+    // Cleanup ServiceCoordinator and all managed services
+    if (this.serviceCoordinator) {
+      try {
+        await this.serviceCoordinator.destroy();
+        this.serviceCoordinator = null;
+        this.log('ServiceCoordinator destroyed successfully');
+      } catch (error) {
+        this.error('Error destroying ServiceCoordinator:', error);
+      }
+    }
+
+    // Stop health check interval
+    // Note: Health check intervals managed by ServiceCoordinator
+
+    // Note: Energy tracking interval stop managed by ServiceCoordinator
+
+    // Stop COP calculation interval
+    this.stopCOPCalculationInterval();
+
+    // Stop idle monitoring
+    this.stopIdleMonitoring();
+
+    // Stop 24h defrost counter refresh
+    this.stopDefrost24hRefresh();
+
+    // Save rolling COP data before shutdown
+    await this.saveRollingCOPData();
+
+    // Save SCOP seasonal data before shutdown (v1.0.31+)
+    await this.saveSCOPData();
+
+    // Stop SCOP update interval
+    this.stopSCOPUpdateInterval();
+
+    // Destroy calculator services to release memory (prevent memory leaks)
+    if (this.scopCalculator) {
+      try {
+        this.scopCalculator.destroy();
+        this.scopCalculator = null;
+        this.categoryLog('scop', 'SCOP calculator destroyed - memory released');
+      } catch (error) {
+        this.error('Error destroying SCOP calculator:', error);
+      }
+    }
+
+    if (this.rollingCOPCalculator) {
+      try {
+        this.rollingCOPCalculator.destroy();
+        this.rollingCOPCalculator = null;
+        this.log('Rolling COP calculator destroyed - memory released');
+      } catch (error) {
+        this.error('Error destroying Rolling COP calculator:', error);
+      }
+    }
+
+    if (this.tuya) {
+      try {
+        // Remove all event listeners to prevent memory leaks
+        this.tuya.removeAllListeners();
+
+        // Disconnect if instance exists (ServiceCoordinator handles its own cleanup)
+        if (this.tuya) {
+          this.tuya.disconnect();
+          this.log('Disconnected from Tuya device');
+        }
+      } catch (err) {
+        this.error('Error cleaning up Tuya device:', err);
+      }
+    }
+
+    // Clean up flow card listeners
+    this.unregisterAllFlowCards();
+
+    // Reset connection state (ServiceCoordinator handles its own cleanup)
+    this.tuya = undefined;
+  }
+
+  /**
+   * ServiceCoordinator integration methods - expose service functionality
+   */
+
+  /**
+   * Get service health status from ServiceCoordinator
+   */
+  public getServiceHealth(): Record<string, boolean> | null {
+    return this.serviceCoordinator?.getServiceHealth() || null;
+  }
+
+  /**
+   * Get comprehensive service diagnostics
+   */
+  public getServiceDiagnostics(): Record<string, unknown> | null {
+    return this.serviceCoordinator?.getServiceDiagnostics() || null;
+  }
+
+  /**
+   * Force Tuya reconnection via ServiceCoordinator
+   */
+  public async forceServiceReconnection(): Promise<void> {
+    if (this.serviceCoordinator) {
+      await this.serviceCoordinator.forceReconnection();
+    } else {
+      throw new Error('ServiceCoordinator not initialized');
+    }
+  }
+
+  /**
+   * Receive external power data via ServiceCoordinator
+   */
+  public async receiveExternalPowerDataViaService(powerValue: number): Promise<void> {
+    if (this.serviceCoordinator) {
+      await this.serviceCoordinator.receiveExternalPowerData(powerValue);
+    } else if (this.hasCapability('hp_external_power')) {
+      // Fallback to direct capability update
+      await this.setCapabilityValue('hp_external_power', powerValue);
+      // Update defrost active power if applicable (fire-and-forget)
+      this.updateDefrostActivePower().catch((err) => {
+        this.error('Failed to update defrost active power in fallback:', err);
+      });
+    }
+  }
+
+  /**
+   * Update heating curve visualization (v2.3.7)
+   * Called when heating curve parameters change
+   */
+  public async updateHeatingCurveVisualization(): Promise<void> {
+    if (this.serviceCoordinator) {
+      await this.serviceCoordinator.updateHeatingCurveVisualization();
+    } else {
+      this.logger.warn('Cannot update heating curve visualization - ServiceCoordinator not initialized');
+    }
+  }
+}
+
+module.exports = MyDevice;

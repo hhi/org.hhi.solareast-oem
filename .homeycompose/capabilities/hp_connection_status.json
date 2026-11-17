@@ -1,0 +1,20 @@
+{
+  "id": "hp_connection_status",
+  "type": "string",
+  "title": {
+    "en": "Connection Status",
+    "nl": "Verbindingsstatus",
+    "de": "Verbindungsstatus",
+    "fr": "État de connexion"
+  },
+  "desc": {
+    "en": "Current heat pump connection state with timestamp",
+    "nl": "Huidige warmtepomp verbindingsstatus met tijdstempel",
+    "de": "Aktueller Wärmepumpen-Verbindungsstatus mit Zeitstempel",
+    "fr": "État de connexion actuel de la pompe à chaleur avec horodatage"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "icon": "/assets/connection-status.svg"
+}

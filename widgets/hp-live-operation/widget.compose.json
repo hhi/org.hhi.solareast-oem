@@ -1,0 +1,28 @@
+{
+  "name": {
+    "en": "Live Operation",
+    "nl": "Live bedrijf",
+    "de": "Live-Betrieb",
+    "fr": "Fonctionnement en direct"
+  },
+  "description": {
+    "en": "Shows current heat pump operation, water delta, flow, power, output and COP.",
+    "nl": "Toont actuele warmtepompwerking, waterdelta, debiet, vermogen, output en COP.",
+    "de": "Zeigt den aktuellen Wärmepumpenbetrieb, Wasserdelta, Durchfluss, Leistungsaufnahme, Heizleistung und COP.",
+    "fr": "Affiche le fonctionnement actuel de la pompe à chaleur, l'écart d'eau, le débit, la puissance absorbée, la puissance fournie et le COP."
+  },
+  "height": 340,
+  "devices": {
+    "type": "app",
+    "singular": true,
+    "filter": {
+      "class": "heatpump"
+    }
+  },
+  "api": {
+    "getState": {
+      "method": "GET",
+      "path": "/"
+    }
+  }
+}

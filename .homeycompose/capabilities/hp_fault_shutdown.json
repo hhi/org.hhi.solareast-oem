@@ -1,0 +1,33 @@
+{
+  "id": "hp_fault_shutdown",
+  "type": "boolean",
+  "title": {
+    "en": "Fault shutdown",
+    "nl": "Fout - unit gestopt",
+    "de": "Fehlerabschaltung",
+    "fr": "Arrêt sur défaut"
+  },
+  "icon": "/assets/fault.svg",
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "insights": true,
+  "insightsTitleTrue": {
+    "en": "Unit shut down due to fault",
+    "nl": "Unit gestopt door fout",
+    "de": "Gerät durch Fehler abgeschaltet",
+    "fr": "Unité arrêtée en raison d'un défaut"
+  },
+  "insightsTitleFalse": {
+    "en": "Fault shutdown cleared",
+    "nl": "Fout-stop opgeheven",
+    "de": "Fehlerabschaltung aufgehoben",
+    "fr": "Arrêt sur défaut effacé"
+  },
+  "description": {
+    "en": "Fault shutdown status. True when the heat pump has stopped because of a fault.",
+    "nl": "Storingsstop. Waar als de warmtepomp door een storing is gestopt.",
+    "de": "Störabschaltung. Wahr, wenn die Wärmepumpe wegen einer Störung abgeschaltet hat.",
+    "fr": "Arrêt sur défaut. Vrai lorsque la pompe à chaleur s'est arrêtée à cause d'un défaut."
+  }
+}

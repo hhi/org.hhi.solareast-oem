@@ -1,0 +1,39 @@
+{
+  "id": "hp_measure_pulse_steps_temp_current",
+  "title": {
+    "en": "EEV Open",
+    "nl": "EEV Open",
+    "de": "EEV-Öffnung",
+    "fr": "Ouverture EEV"
+  },
+  "type": "number",
+  "units": {
+    "en": "Pulse-steps",
+    "nl": "Puls-stappen",
+    "de": "Pulsschritte",
+    "fr": "Pas d'impulsion"
+  },
+
+  "min": -500,
+  "max": 500,
+  "step": 1,
+  "decimals": 0,
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "insightsTitle": {
+    "en": "EEV Open",
+    "nl": "EEV Open",
+    "de": "EEV-Öffnung",
+    "fr": "Ouverture EEV"
+  },
+  "icon": "/assets/pulse-steps.svg",
+  
+  "description": {
+    "en": "dp 16: temp_current - Electronic Expansion Valve (EEV) pulse steps",
+    "nl": "dp 16: temp_current - Elektronisch expansieventiel (EEV) pulsstappen",
+    "de": "dp 16: temp_current - Elektronisches Expansionsventil (EEV) Impulsschritte",
+    "fr": "dp 16: temp_current - Pas d'impulsion du détendeur électronique (EEV)"
+  }
+}

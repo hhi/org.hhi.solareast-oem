@@ -1,0 +1,33 @@
+{
+  "id": "hp_defrosting",
+  "type": "boolean",
+  "title": {
+    "en": "Defrosting",
+    "nl": "Ontdooien",
+    "de": "Abtauen",
+    "fr": "Dégivrage"
+  },
+  "icon": "/assets/defrost-state.svg",
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "insights": true,
+  "insightsTitleTrue": {
+    "en": "Defrosting started",
+    "nl": "Ontdooien gestart",
+    "de": "Abtauen gestartet",
+    "fr": "Dégivrage démarré"
+  },
+  "insightsTitleFalse": {
+    "en": "Defrosting stopped",
+    "nl": "Ontdooien gestopt",
+    "de": "Abtauen gestoppt",
+    "fr": "Dégivrage arrêté"
+  },
+  "description": {
+    "en": "Defrost status. True while the outdoor coil is actively being defrosted.",
+    "nl": "Ontdooistatus. Waar zolang de buitenspoel actief wordt ontdooid.",
+    "de": "Abtaustatus. Wahr, solange der Außenwärmetauscher aktiv abgetaut wird.",
+    "fr": "État de dégivrage. Vrai pendant le dégivrage actif de l'échangeur extérieur."
+  }
+}

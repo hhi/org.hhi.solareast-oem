@@ -1,0 +1,14 @@
+{
+  "id": "heating_curve_slope",
+  "type": "number",
+  "title": {
+    "en": "Heating Curve Slope",
+    "nl": "Verwarmingscurve Helling",
+    "de": "Heizkurven-Neigung",
+    "fr": "Pente de la courbe de chauffe"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": null,
+  "insights": true
+}

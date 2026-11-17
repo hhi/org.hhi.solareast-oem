@@ -1,0 +1,235 @@
+{
+  "pair": {
+    "enter_device_info": {
+      "title": "Geräteinformationen eingeben",
+      "description": "Bitte geben Sie Ihre Tuya-Gerätedaten ein",
+      "device_id": "Geräte-ID",
+      "local_key": "Lokaler Schlüssel",
+      "ip_address": "IP-Adresse",
+      "protocol_version": "Protokollversion",
+      "continue": "Fortfahren"
+    },
+    "enter_modbus_info": {
+      "title": "Modbus-Verbindung",
+      "description": "Geben Sie die IP-Adresse und den Port Ihres Elfin EW11A oder Modbus-TCP-Gateways ein",
+      "model_hint": "Wählen Sie den Treiber, der zum Anschluss Ihrer Wärmepumpe passt: Modbus (über ein RS485-Gateway) oder WLAN (Tuya).",
+      "host": "IP-Adresse:",
+      "port": "TCP-Port:",
+      "unit_id": "Modbus-Unit-ID:",
+      "continue": "Weiter"
+    }
+  },
+  "cop_method": {
+    "direct_thermal": "Direkt Thermisch",
+    "power_module": "Leistungsmodul",
+    "power_estimation": "Leistungsschätzung",
+    "refrigerant_circuit": "Kältemittelkreislauf",
+    "carnot_estimation": "Carnot-Schätzung",
+    "valve_correlation": "Ventil-Korrelation",
+    "temperature_difference": "Temperaturdifferenz",
+    "insufficient_data": "!",
+    "idle_mode": "Kompressor aus",
+    "outlier": "Ausreißer",
+    "disabled": "Deaktiviert"
+  },
+  "cop_method_description": {
+    "direct_thermal": "Direkte thermische Berechnung mit Wasserdurchfluss und Temperaturdifferenz (±5% Genauigkeit)",
+    "power_module": "Leistungsmodul-Schätzung mit internen Sensoren und externer Validierung (±8% Genauigkeit)",
+    "power_estimation": "Stromverbrauchsschätzung mit Kompressor- und Lüfterdaten (±10% Genauigkeit)",
+    "refrigerant_circuit": "Kältemittelkreislauf-Analyse mit Druck- und Temperatursensoren (±12% Genauigkeit)",
+    "carnot_estimation": "Carnot-basierte Schätzung mit Kompressorfrequenz und Umgebungstemperatur (±15% Genauigkeit)",
+    "valve_correlation": "Ventilpositions-Korrelation mit Expansionsventildaten (±20% Genauigkeit)",
+    "temperature_difference": "Temperaturdifferenz-Schätzung mit empirischen Beziehungen (±30% Genauigkeit)",
+    "insufficient_data": "Unzureichende Daten für jede COP-Berechnungsmethode verfügbar"
+  },
+  "scop_status": {
+    "initializing": "Initialisierung...",
+    "collecting": "Daten sammeln",
+    "insufficient_data": "7+ Tage Daten erforderlich",
+    "calculating": "Berechnung..."
+  },
+  "trend_descriptions": {
+    "strong_improvement": "Starke Effizienzsteigerung",
+    "moderate_improvement": "Moderate Effizienzsteigerung",
+    "slight_improvement": "Leichte Effizienzsteigerung",
+    "significant_decline": "Erheblicher Effizienzverlust",
+    "moderate_decline": "Moderater Effizienzverlust",
+    "slight_decline": "Leichter Effizienzverlust",
+    "stable": "Stabile Leistung"
+  },
+  "cop_diagnostics": {
+    "no_power_measurement": "Keine Leistungsdaten",
+    "no_thermal_measurement": "Keine thermischen Daten",
+    "no_water_flow": "Keine Durchflussdaten",
+    "no_temperature_difference": "Kein Temperatur-Delta",
+    "no_compressor_data": "Keine Kompressordaten",
+    "insufficient_sensor_data": "Mehrere Ausfälle",
+    "enable_power_monitoring": "Leistungsüberwachung aktivieren",
+    "check_temperature_sensors": "Temperatursensoren prüfen",
+    "check_flow_sensor": "Durchflusssensor prüfen",
+    "check_compressor_communication": "Kompressor-Verbindung prüfen",
+    "check_multiple_sensors": "Alle Sensoren prüfen"
+  },
+  "COP calculation disabled": "COP-Berechnung deaktiviert",
+  "connection_status": {
+    "connected": "Verbunden",
+    "disconnected": "Getrennt",
+    "reconnecting": "Wiederverbinden",
+    "error": "Fehler"
+  },
+  "building_model": {
+    "thermal_mass_title": "ML Thermische Masse",
+    "heat_loss_title": "ML Wärmeverlust",
+    "time_constant_title": "ML Zeitkonstante",
+    "solar_gain_title": "ML Solarer Gewinnfaktor",
+    "internal_gains_title": "ML Interne Gewinne",
+    "emitter_delay_title": "ML Wärmeabgabe-Verzögerung",
+    "emitter_delay_learned": "gelernt",
+    "emitter_delay_start": "Startwert",
+    "status_learned": "LERNEND",
+    "status_default": "STANDARD",
+    "status_blocked": "BLOCKIERT",
+    "blocked_prefix": "Blockiert",
+    "blocked_no_indoor_temp": "Keine Innentemp",
+    "blocked_indoor_temp_unchanged": "Innentemp unverändert",
+    "blocked_no_outdoor_temp": "Keine Außentemp",
+    "blocked_no_power": "Keine Leistung",
+    "blocked_disabled": "Deaktiviert",
+    "blocked_dhw_mode": "Nicht im Heizmodus",
+    "blocked_defrost": "Abtauen aktiv",
+    "blocked_no_cop": "Keine COP-Messung",
+    "period_night": "Nacht",
+    "period_day": "Tag",
+    "period_evening": "Abend",
+    "blocked_dhw_active": "Warmwasserbereitung",
+    "blocked_aux_heating": "Zusatzheizung aktiv"
+  },
+  "adaptive_control": {
+    "indoor_unchanged_warn": "Die Innentemperatur hat seit 12 Stunden denselben Wert. Prüfen Sie den Sensor und den Flow, der den Wert sendet.",
+    "indoor_unchanged_stale": "Die Innentemperatur hat sich seit 24 Stunden nicht geändert. Die adaptive Regelung korrigiert nicht mehr darauf und das Gebäudemodell lernt nicht mehr, bis ein anderer Wert eintrifft.",
+    "indoor_changed_again": "Die Innentemperatur ändert sich wieder. Die adaptive Regelung und das Gebäudemodell verwenden den Wert wieder."
+  },
+  "errors": {
+    "zone_onoff_disabled": "Ein/Aus über das Zonenregister 2101 ist experimentell. Aktivieren Sie 'Ein/Aus über Zonensteuerung (experimentell)' in den Geräteeinstellungen, um dies zu nutzen.",
+    "silent_level2_r290_only": "Leisemodus Stufe 2 ist nur bei R290-Wärmepumpen verfügbar.",
+    "adaptive_setpoint_range": "Die maximale Wassertemperatur muss mindestens __gap__°C über der minimalen Wassertemperatur liegen.",
+    "diy_curve_not_read": "Die DIY-Heizkurve (L28/L29) wurde noch nicht ausgelesen. Versuchen Sie es in einer Minute erneut.",
+    "diy_curve_unusable": "Die DIY-Heizkurve (L28/L29) ist nicht verwendbar: die Steigung L28 ist nicht negativ, oder die Werte liegen außerhalb der App-Kurve (20–65 °C bei −15 °C, 15–50 °C bei +15 °C)."
+  },
+  "widget": {
+    "live_operation": {
+      "locale": "de-DE",
+      "loading": "Live-Betrieb wird geladen...",
+      "no_data": "Keine Live-Daten verfügbar.",
+      "no_device": "Keine Wärmepumpe gekoppelt.",
+      "load_failed": "Live-Daten konnten nicht geladen werden.",
+      "default_device_name": "Wärmepumpe",
+      "unknown": "Unbekannt",
+      "status": {
+        "fault": "Störung",
+        "defrost": "Abtauen",
+        "active": "Aktiv",
+        "standby": "Standby"
+      },
+      "connection": {
+        "online": "Online",
+        "offline": "Offline",
+        "degraded": "Eingeschränkt"
+      },
+      "delta": "Vorlauf - Rücklauf",
+      "regulation": "Regelung",
+      "regulation_summary": "__mode__ auf __sensor__",
+      "regulation_unknown": "Regelung unbekannt",
+      "regulation_sensor": {
+        "return": "Rücklauf T6",
+        "supply": "Vorlauf T7",
+        "unknown": "Regelfühler unbekannt"
+      },
+      "setpoint_deviation": "Sollwertabweichung __value__ C",
+      "hysteresis_unknown": "Hysterese unbekannt",
+      "hysteresis_unread": "__source__ noch nicht gelesen",
+      "hysteresis_value": "__source__ Hysterese __value__C",
+      "metric": {
+        "input": "Aufnahme",
+        "output": "Abgabe",
+        "flow": "Durchfluss",
+        "compressor": "Verdichter",
+        "cop_live": "COP live",
+        "defrost": "Abtauen"
+      },
+      "yes": "Ja",
+      "no": "Nein",
+      "label": {
+        "supply": "Vorlauf",
+        "return": "Rücklauf",
+        "outdoor": "Außen",
+        "setpoint": "Sollwert",
+        "last_poll": "Letzte Abfrage"
+      },
+      "age": {
+        "now": "jetzt",
+        "seconds": "s",
+        "minutes": "m",
+        "hours": "h"
+      },
+      "mode_tuya": {
+        "cold": "Kalt",
+        "heating": "Heizen",
+        "floor_heating": "Fußbodenheizung",
+        "hot_water": "Warmwasser",
+        "cold_and_hotwater": "Kalt- und Warmwasser",
+        "heating_and_hot_water": "Heizen und Warmwasser",
+        "floor_heatign_and_hot_water": "Fußbodenheizung und Warmwasser"
+      }
+    }
+  },
+  "modbusRegisterDescriptions": {
+    "fan_type": "0=AC, 1=DC, 2=EC, 3=unbekannt (bei Programm 433 gemessen).",
+    "sterilization_start_hour": "Startstunde 0..23 (23 = 23:00), bei Programm 433 / Protokoll 143 gemessen. Die ältere Spezifikation nannte HHMM 2300.",
+    "suspected_custom_curve_point": "Vermutlicher Punkt c{point} der benutzerdefinierten Heizkurve",
+    "suspected_custom_curve_point_description": "Vermutliche Koordinate c{point} der benutzerdefinierten Heizkurve. Die Außentemperatur an diesem Punkt und der Zusammenhang mit L28/L29 sind noch nicht bestätigt.",
+    "heat_pump_clock": "Uhrzeit der Wärmepumpe",
+    "heat_pump_clock_description": "Uhrzeit der Wärmepumpe: Wert = Stunde × 256 + Minute. Hohes Byte = Stunde, niedriges Byte = Minute; 0x1523 = 21:35 (dezimal 5411). Auf beobachtetem Verhalten basierend; die OEM-Tabelle führt diese Adresse als reserviert. Nur Lesen.",
+    "unknown_control_register": "Bedeutung unbekannt",
+    "unknown_control_register_description": "Die Bedeutung dieses Registers ist noch nicht geklärt. Nur Lesen zur Untersuchung.",
+    "suspected_curve_slope": "Vermutlicher Heizkurvenkoeffizient k",
+    "suspected_curve_slope_description": "Vermutlicher Steigungskoeffizient einer weiteren Heizkurve, zusammen mit {partner}. Zweck, Skalierung und Formel sind unbestätigt; der Registerwert bleibt unverändert.",
+    "suspected_curve_constant": "Vermutliche Heizkurvenkonstante b",
+    "suspected_curve_constant_description": "Vermutliche Konstante einer weiteren Heizkurve, zusammen mit {partner}. Zweck, Einheit und Formel sind unbestätigt.",
+    "suspected_hour_setting": "Vermutliche Stundeneinstellung {index}",
+    "suspected_hour_setting_description": "Der gemessene Bereich 0..23 passt zu einer Stundeneinstellung. Beginn/Ende und der Zusammenhang mit Heizkurven sind unbestätigt.",
+    "binary_parameter": "Binärer Parameter — Funktion unbekannt",
+    "binary_parameter_description": "Der gemessene Bereich 0..1 passt zu einem Schalter oder Flag. Die Bedeutung von 0 und 1 und der Zusammenhang mit Heizkurven sind unbestätigt."
+  },
+  "modbusParameterBanks": {
+    "button": "Parametergrenzen abrufen",
+    "help": "Grenzen der sichtbaren P- und L-Parameter lesen. Einstellungen werden nicht geändert.",
+    "loading": "Parametergrenzen werden abgerufen…",
+    "bank": "Wärmepumpe",
+    "definition": "App-Definition",
+    "unread": "Nicht gelesen",
+    "unavailable": "Nicht verfügbar",
+    "invalid": "Ungültige Grenzen",
+    "empty": "Keine P- oder L-Parameter in dieser Auswahl.",
+    "progress": "{done}/{total} Parameter verarbeitet",
+    "complete": "{available} Bankbereiche verfügbar; {fallback} verwenden App-Definitionen.",
+    "stopped": "Abruf beendet: keine brauchbaren Bankdaten empfangen.",
+    "error": "Parametergrenzen konnten nicht abgerufen werden.",
+    "readAt": "Gelesen: {time}",
+    "warning": "Außerhalb des Bereichs von {source}: {value}; erwartet {range}",
+    "summary": "Bereichsprüfung: {checked}/{total}; außerhalb: {out}.",
+    "inputRange": "Eingabebereich der App",
+    "appRange": "App-Grenzen",
+    "deviceRange": "Wärmepumpengrenzen",
+    "unreadHelp": "Die Min-/Max-Blöcke lesen oder auf Parametergrenzen abrufen klicken.",
+    "pMax": "P-Maxima — Obergrenzen (0x0400–0x05FF)",
+    "pMin": "P-Minima — Untergrenzen (0x0600–0x07FF)",
+    "lMax": "L-Maxima — Obergrenzen (0x0840–0x087F)",
+    "lMin": "L-Minima — Untergrenzen (0x0880–0x08BF)",
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "readOnly": "Diese Parametergrenzenbank ist schreibgeschützt.",
+    "unconfirmedPosition": "Parameterfunktion unbestätigt",
+    "unconfirmedPositionHelp": "Diagnostische Bankposition L61–L74. Der erfasste Dump enthält Grenzen 0..0 und zugehörige Flag-Bits 0; eine Parameterfunktion ist unbestätigt."
+  }
+}

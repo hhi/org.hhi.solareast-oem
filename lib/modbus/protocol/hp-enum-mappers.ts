@@ -1,0 +1,88 @@
+/* eslint-disable import/prefer-default-export */
+
+/**
+ * Converteert een numerieke heatingCurve registerwaarde (0x0314) naar de
+ * hp_enum_countdown_set enum-id.
+ * 0 = OFF, 1-8 = H1-H8, 11-18 = L1-L8
+ */
+export function heatingCurveToEnumId(raw: number): string {
+  if (raw === 0) return 'OFF';
+  if (raw >= 1 && raw <= 8) return `H${raw}`;
+  if (raw >= 11 && raw <= 18) return `L${raw - 10}`;
+  return 'OFF';
+}
+
+/**
+ * Converteert een hp_enum_countdown_set enum-id terug naar de
+ * registerwaarde voor Modbus schrijven (0x0314).
+ */
+export function enumIdToHeatingCurve(id: string): number {
+  if (id === 'OFF') return 0;
+  if (id.startsWith('H')) return parseInt(id.slice(1), 10);
+  if (id.startsWith('L')) return parseInt(id.slice(1), 10) + 10;
+  return 0;
+}
+
+/**
+ * Converteert register 0x0307 (0=Standard, 1=High Power, 2=Silent)
+ * naar de hp_enum_work_mode_modbus enum-id (ECO/Normal/Boost).
+ */
+export function userModeToWorkModeId(raw: number): string {
+  if (raw === 2) return 'ECO';
+  if (raw === 1) return 'Boost';
+  return 'Normal'; // 0 = Standard
+}
+
+/**
+ * Converteert een hp_enum_work_mode_modbus enum-id terug naar de
+ * registerwaarde voor Modbus schrijven (0x0307).
+ */
+export function workModeIdToUserMode(id: string): 0 | 1 | 2 {
+  if (id === 'ECO') return 2;
+  if (id === 'Boost') return 1;
+  return 0; // Normal = Standard
+}
+
+/**
+ * Converteert register 0x0315 (0=OFF, 1–4=H1–H4) naar
+ * hp_enum_capacity_set_modbus enum-id.
+ */
+export function hotWaterCurveToEnumId(raw: number): string {
+  if (raw >= 1 && raw <= 4) return `H${raw}`;
+  return 'OFF';
+}
+
+/**
+ * Converteert hp_enum_capacity_set_modbus enum-id naar registerwaarde
+ * voor Modbus schrijven (0x0315).
+ */
+export function enumIdToHotWaterCurve(id: string): number {
+  if (id.startsWith('H')) return parseInt(id.slice(1), 10);
+  return 0; // OFF
+}
+
+/**
+ * Converteert register L22 (0x080B) naar hp_state_backwater_modbus enum-id.
+ * 0=disable, 1=continuous return, 2=cycle return, 3=temperature diff return
+ */
+export function backwaterModeToEnumId(raw: number): string {
+  if (raw === 1) return 'continuous';
+  if (raw === 2) return 'cycle';
+  if (raw === 3) return 'temp_diff';
+  return 'disable';
+}
+
+export type SpaceSetpointTarget = 'heating' | 'cooling' | 'floor';
+
+/**
+ * Converteert register 0x0304 (Set Mode) naar het ruimte-setpoint waarop de
+ * warmtepomp in die modus regelt. Combimodi koppelen tapwater altijd aan één
+ * ruimtemodus: 4=HW+cooling, 5=HW+heating, 7=HW+floor heating.
+ * Hot water (2) en reserve (6) hebben geen ruimte-setpoint → null.
+ */
+export function modeToSpaceSetpointTarget(mode: number): SpaceSetpointTarget | null {
+  if (mode === 0 || mode === 4) return 'cooling';
+  if (mode === 1 || mode === 5) return 'heating';
+  if (mode === 3 || mode === 7) return 'floor';
+  return null;
+}

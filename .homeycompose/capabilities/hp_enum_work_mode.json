@@ -1,0 +1,50 @@
+{
+  "id": "hp_enum_work_mode",
+  "title": {
+    "en": "Set Working mode",
+    "nl": "Bedrijfsmodus instellen",
+    "de": "Betriebsmodus einstellen",
+    "fr": "Définir le mode de fonctionnement"
+  },
+  "type": "enum",
+  "values": [
+    {
+      "id": "ECO",
+      "title": {
+        "en": "ECO",
+        "nl": "ECO",
+        "de": "ECO / Sparen",
+        "fr": "ECO / Économique"
+      }
+    },
+    {
+      "id": "Normal",
+      "title": {
+        "en": "Normal",
+        "nl": "Normaal",
+        "de": "Normal",
+        "fr": "Normal"
+      }
+    },
+    {
+      "id": "Boost",
+      "title": {
+        "en": "Boost",
+        "nl": "Boost",
+        "de": "Boost / Schnell",
+        "fr": "Boost / Rapide"
+      }
+    }
+  ],
+  "uiComponent": "picker",
+  "getable": true,
+  "setable": true,
+  "preventInsights": true,
+
+  "description": {
+    "en": "dp 5: work_mode - Controls operating capacity mode (ECO, Normal, Boost)",
+    "nl": "dp 5: work_mode - Beheert de capaciteitsmodus (ECO, Normaal, Boost)",
+    "de": "dp 5: work_mode - Steuert den Kapazitätsmodus (ECO, Normal, Boost)",
+    "fr": "dp 5: work_mode - Contrôle le mode de capacité (ECO, Normal, Boost)"
+  }
+}

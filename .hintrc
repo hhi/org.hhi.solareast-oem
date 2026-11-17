@@ -1,0 +1,11 @@
+{
+  "connector": {
+    "name": "local"
+  },
+  "hints": {
+    "typescript-config/is-valid": "off"
+  },
+  "formatters": [
+    "stylish"
+  ]
+}

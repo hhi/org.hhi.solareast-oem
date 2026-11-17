@@ -1,0 +1,70 @@
+<div class="homey-view">
+  <header class="homey-header">
+    <h1 class="homey-title" data-i18n="pair.enter_device_info.title">Enter Device Information</h1>
+    <p class="homey-subtitle" data-i18n="pair.enter_device_info.description">Please enter your device ID, local key, and IP address</p>
+  </header>
+
+  <form class="homey-form" onsubmit="handleSubmit(event)">
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="device_id" data-i18n="pair.enter_device_info.device_id">Device ID:</label>
+      <input class="homey-form-input" type="text" id="device_id" placeholder="Enter device ID" aria-describedby="deviceError" required>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="local_key" data-i18n="pair.enter_device_info.local_key">Local Key:</label>
+      <input class="homey-form-input" type="text" id="local_key" placeholder="Enter local key" aria-describedby="deviceError" required>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="ip_address" data-i18n="pair.enter_device_info.ip_address">IP Address:</label>
+      <input class="homey-form-input" type="text" id="ip_address" placeholder="Enter IP address" aria-describedby="deviceError" required>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="protocol_version" data-i18n="pair.enter_device_info.protocol_version">Protocol Version:</label>
+      <select class="homey-form-input" id="protocol_version" aria-describedby="deviceError">
+        <option value="3.3" selected>3.3 (Default)</option>
+        <option value="3.4">3.4</option>
+        <option value="3.5">3.5</option>
+      </select>
+    </div>
+
+    <p id="deviceError" class="homey-form-error homey-form-error-hidden" role="alert">
+      Please enter Device ID, Local Key, and IP Address.
+    </p>
+
+    <button class="homey-button-primary-full" type="submit" data-i18n="pair.enter_device_info.continue">Continue</button>
+  </form>
+</div>
+
+<script>
+  async function handleSubmit(event) {
+    event.preventDefault(); // Prevent default form submission
+    const deviceId = document.getElementById('device_id').value.trim();
+    const localKey = document.getElementById('local_key').value.trim();
+    const ipAddress = document.getElementById('ip_address').value.trim();
+    const protocolVersion = document.getElementById('protocol_version').value;
+    const errorElement = document.getElementById('deviceError');
+
+    if (!deviceId || !localKey || !ipAddress) {
+      errorElement.textContent = 'Please enter Device ID, Local Key, and IP Address.';
+      errorElement.classList.remove('homey-form-error-hidden');
+      return;
+    }
+
+    errorElement.classList.add('homey-form-error-hidden');
+
+    try {
+      await Homey.emit('enter_device_info', { deviceId, localKey, ipAddress, protocolVersion });
+      Homey.nextView();
+    } catch (err) {
+      errorElement.textContent = 'Failed to save device info: ' + err.message;
+      errorElement.classList.remove('homey-form-error-hidden');
+    }
+  }
+</script>
+<style>
+  .homey-form-error-hidden {
+    display: none;
+  }
+</style>

@@ -1,0 +1,67 @@
+{
+  "id": "hp_enum_capacity_set",
+  "title": {
+    "en": "Set Hot Water curve",
+    "nl": "Warmwater curve instellen",
+    "de": "Warmwasserkurve einstellen",
+    "fr": "Définir la courbe d'eau chaude"
+  },
+  "type": "enum",
+  "values": [
+    {
+      "id": "OFF",
+      "title": {
+        "en": "OFF",
+        "nl": "UIT",
+        "de": "AUS",
+        "fr": "ARRÊT"
+      }
+    },
+    {
+      "id": "H1",
+      "title": {
+        "en": "H1",
+        "nl": "H1",
+        "de": "Stufe H1",
+        "fr": "Niveau H1"
+      }
+    },
+    {
+      "id": "H2",
+      "title": {
+        "en": "H2",
+        "nl": "H2",
+        "de": "Stufe H2",
+        "fr": "Niveau H2"
+      }
+    },
+    {
+      "id": "H3",
+      "title": {
+        "en": "H3",
+        "nl": "H3",
+        "de": "Stufe H3",
+        "fr": "Niveau H3"
+      }
+    },
+    {
+      "id": "H4",
+      "title": {
+        "en": "H4",
+        "nl": "H4",
+        "de": "Stufe H4",
+        "fr": "Niveau H4"
+      }
+    }
+  ],
+  "uiComponent": "picker",
+  "getable": true,
+  "setable": true,
+  "preventInsights": true,
+  "description": {
+    "en": "dp 11: capacity_set - Controls the hot water curve settings (OFF, H1-H4) for domestic hot water heating",
+    "nl": "dp 11: capacity_set - Beheert de warmwater curve instellingen (UIT, H1-H4) voor sanitair warm water",
+    "de": "dp 11: capacity_set - Steuert die Warmwasserkurveneinstellungen (AUS, H1-H4) für Brauchwarmwasserbereitung",
+    "fr": "dp 11: capacity_set - Contrôle les paramètres de courbe d'eau chaude (ARRÊT, H1-H4) pour le chauffage de l'eau chaude sanitaire"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "hp_eev_step",
+  "type": "number",
+  "title": {
+    "en": "EEV opening steps",
+    "nl": "EEV-openingsstappen",
+    "de": "EEV-Öffnungsschritte",
+    "fr": "Pas d'ouverture EEV"
+  },
+  "icon": "/assets/pulse-steps.svg",
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "units": "steps",
+  "decimals": 0,
+  "min": 0,
+  "max": 500,
+  "description": {
+    "en": "Opening position of the main electronic expansion valve (EEV), in stepper motor steps.",
+    "nl": "Openingspositie van de elektronische hoofdexpansieklep (EEV), in stappenmotor-stappen.",
+    "de": "Öffnungsposition des elektronischen Hauptexpansionsventils (EEV), in Schrittmotorschritten.",
+    "fr": "Position d'ouverture du détendeur électronique principal (EEV), en pas du moteur pas à pas."
+  },
+  "insights": true,
+  "insightsTitle": {
+    "en": "Heat Pump EEV Opening",
+    "nl": "Warmtepomp EEV-opening",
+    "de": "Wärmepumpe EEV-Öffnung",
+    "fr": "Ouverture EEV pompe à chaleur"
+  }
+}

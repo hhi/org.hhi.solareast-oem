@@ -1,0 +1,8 @@
+{
+  "1.0.0": {
+    "en": "First version: local control of SolarEast OEM heat pumps via Modbus or Wi-Fi (Tuya).",
+    "nl": "Eerste versie: lokale bediening van SolarEast OEM-warmtepompen via Modbus of wifi (Tuya).",
+    "de": "Erste Version: lokale Steuerung von SolarEast-OEM-Wärmepumpen über Modbus oder WLAN (Tuya).",
+    "fr": "Première version : contrôle local des pompes à chaleur SolarEast OEM via Modbus ou Wi-Fi (Tuya)."
+  }
+}

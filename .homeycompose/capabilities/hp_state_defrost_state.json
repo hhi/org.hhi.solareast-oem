@@ -1,0 +1,34 @@
+{
+  "id": "hp_state_defrost_state",
+  "title": {
+    "en": "Defrosting",
+    "nl": "Ontdooi status",
+    "de": "Abtaustatus",
+    "fr": "État de dégivrage"
+  },
+  "type": "boolean",
+  "setable": false,
+  "getable": true,
+  "uiComponent": "sensor",
+  "icon": "/assets/defrost-state.svg",
+  "insights": true,
+  "insightsTitleTrue": {
+    "en": "Defrosting active",
+    "nl": "Ontdooien actief",
+    "de": "Abtauen aktiv",
+    "fr": "Dégivrage actif"
+  },
+  "insightsTitleFalse": {
+    "en": "Defrosting inactive",
+    "nl": "Ontdooien niet actief",
+    "de": "Abtauen inaktiv",
+    "fr": "Dégivrage inactif"
+  },
+
+  "description": {
+    "en": "dp 33: defrost_state - Heat pump defrost cycle active status",
+    "nl": "dp 33: defrost_state - Warmtepomp ontdooicyclus actieve status",
+    "de": "dp 33: defrost_state - Wärmepumpen-Abtauzyklus Aktivstatus",
+    "fr": "dp 33: defrost_state - État actif du cycle de dégivrage de la pompe à chaleur"
+  }
+}
