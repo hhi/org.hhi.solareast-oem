@@ -1,5 +1,5 @@
 /**
- * A building profile change soft-resets the building model in all three drivers
+ * A building profile change soft-resets the building model in both OEM drivers
  * (ADR-062 phase 1f; the Modbus driver did not do this before 3.4.0).
  * Builds the compiled ServiceCoordinator from its prototype with service stubs,
  * so only the order in onSettings() is exercised.
@@ -26,14 +26,22 @@ function createCoordinator(driver) {
     settingsManager: { onSettings: async () => {} },
     energyTracking: { onSettings: async () => {} },
     adaptiveControl: {
-      onSettings: async () => { calls.push('adaptiveControl.onSettings'); },
+      onSettings: async () => {
+        calls.push('adaptiveControl.onSettings');
+      },
       getBuildingModelService: () => ({
-        softReset: async (profile) => { calls.push(`softReset:${profile}`); },
+        softReset: async (profile) => {
+          calls.push(`softReset:${profile}`);
+        },
       }),
     },
     buildingInsights: {
-      onSettingsChanged: async () => { calls.push('insights.onSettingsChanged'); },
-      evaluateInsights: async () => { calls.push('insights.evaluateInsights'); },
+      onSettingsChanged: async () => {
+        calls.push('insights.onSettingsChanged');
+      },
+      evaluateInsights: async () => {
+        calls.push('insights.evaluateInsights');
+      },
     },
   });
   return { coordinator, calls };

@@ -1,7 +1,7 @@
 /**
  * ADR-067 D1: the settings of the COP optimizer and the highest pre-heat of the price optimizer
  * reach the optimizers at construction (so they survive a restart) and when changed, in all
- * three drivers.
+ * two OEM drivers.
  */
 
 'use strict';
@@ -42,10 +42,14 @@ function createDevice(settings = {}) {
     },
     getSetting: (key) => settings[key],
     getStoreValue: (key) => store[key],
-    setStoreValue: async (key, value) => { store[key] = value; },
+    setStoreValue: async (key, value) => {
+      store[key] = value;
+    },
     getCapabilityValue: (key) => capabilities[key] ?? null,
     hasCapability: (key) => Object.prototype.hasOwnProperty.call(capabilities, key),
-    setCapabilityValue: async (key, value) => { capabilities[key] = value; },
+    setCapabilityValue: async (key, value) => {
+      capabilities[key] = value;
+    },
     setCapabilityOptions: async () => {},
     getOutdoorTemperatureWithFallback: () => 5,
     error: () => {},
@@ -133,7 +137,7 @@ for (const [name, Service] of DRIVERS) {
   });
 }
 
-// ADR-067 D3: all three services round the positional recommendation with hysteresis
+// ADR-067 D3: both OEM services round the positional recommendation with hysteresis
 for (const [name, Service] of DRIVERS) {
   test(`${name}: the positional recommendation holds around a half and still respects the range`, () => {
     const ctx = { lastRecommendedTemp: 41, lastRawRecommendation: null, _clampRecommendation: (value) => Math.min(value, 45) };
@@ -147,7 +151,6 @@ for (const [name, Service] of DRIVERS) {
     assert.strictEqual(recommend(50, -3.4), 45, 'a kept value above the range is clamped');
   });
 }
-
 
 // v3.11.0: the threshold mode reaches the price optimizer at start and when changed
 for (const [name, Service] of DRIVERS) {

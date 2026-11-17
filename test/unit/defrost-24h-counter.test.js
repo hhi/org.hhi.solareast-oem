@@ -64,8 +64,12 @@ test('BLN-TB: a completed defrost cycle updates both capabilities and the store'
   coordinator.defrost24h = new Defrost24hCounter();
   coordinator.device = {
     hasCapability: (key) => Object.prototype.hasOwnProperty.call(capabilities, key),
-    setCapabilityValue: async (key, value) => { capabilities[key] = value; },
-    setStoreValue: async (key, value) => { store[key] = value; },
+    setCapabilityValue: async (key, value) => {
+      capabilities[key] = value;
+    },
+    setStoreValue: async (key, value) => {
+      store[key] = value;
+    },
   };
   coordinator._recordDefrost24h(360);
   await new Promise((resolve) => setImmediate(resolve));

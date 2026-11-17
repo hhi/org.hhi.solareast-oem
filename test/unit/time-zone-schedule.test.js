@@ -157,7 +157,9 @@ for (const [driver, ServiceCoordinator] of coordinatorDrivers) {
       device: {
         homey,
         hasCapability: (id) => id === 'hp_daily_disconnect_count',
-        setCapabilityValue: async (id, value) => { values[id] = value; },
+        setCapabilityValue: async (id, value) => {
+          values[id] = value;
+        },
       },
     };
     const schedule = ServiceCoordinator.prototype._scheduleDailyDisconnectReset;
@@ -186,7 +188,9 @@ for (const [driver, ServiceCoordinator] of coordinatorDrivers) {
       device: {
         homey: createHomey(),
         hasCapability: () => true,
-        setCapabilityValue: async (id, value) => { values[id] = value; },
+        setCapabilityValue: async (id, value) => {
+          values[id] = value;
+        },
       },
     };
 
@@ -208,7 +212,9 @@ const preHeatDrivers = [
 async function getPreHeatListener(FlowCardManagerService, cardId, conditions = undefined) {
   const listeners = {};
   const card = (id) => ({
-    registerRunListener: (fn) => { listeners[id] = fn; return card(id); },
+    registerRunListener: (fn) => {
+      listeners[id] = fn; return card(id);
+    },
     registerArgumentAutocompleteListener: () => card(id),
     trigger: async () => {},
   });
@@ -233,6 +239,7 @@ async function getPreHeatListener(FlowCardManagerService, cardId, conditions = u
         // tau = C / UA = 15 h → 8 h per 2 °C
         getBuildingModelService: () => ({
           getLearner: () => ({ getModel: () => ({ C: 15, UA: 1, confidence: 80 }) }),
+          getPreHeatModel: () => ({ C: 15, UA: 1, pInt: 0.3 }),
           ...(conditions !== undefined ? { getPreHeatConditions: () => conditions } : {}),
         }),
         getExternalTemperatureService: () => ({ getIndoorTemperature: () => 19, getIndoorStaleness: () => 'fresh' }),
@@ -263,7 +270,9 @@ for (const [driver, FlowCardManagerService, cardId] of preHeatDrivers) {
 
   test(`${driver}: pre-heat duration uses the measured heating power (G14)`, async () => {
     // τ 15 h, UA 1 kW/°C, 6 kW at 5 °C outside → T_eq 11.5 °C: 21 °C is out of reach
-    const weak = { UA: 1, pInt: 0.5, outdoorTemp: 5, maxHeatingPowerKw: 6 };
+    const weak = {
+      UA: 1, pInt: 0.5, outdoorTemp: 5, maxHeatingPowerKw: 6,
+    };
     const listener = await getPreHeatListener(FlowCardManagerService, cardId, weak);
     const result = await listener({ target_clock_time: '07:00', target_indoor_temp: 21 });
     assert.strictEqual(result.duration_hours, 48);
