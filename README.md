@@ -53,6 +53,18 @@ Tuya firmware; see [Important Limitations](#important-limitations).
 
 Available measurements and controls vary by driver and heat-pump firmware.
 
+## Adaptive Control
+
+In Classic mode, the configured Kp, Ki and deadband are applied when the device
+starts and when its settings change. The deadband setting applies while building
+model learning is disabled; with the building model enabled, the app derives the
+deadband from heat loss (0.3–0.8 °C).
+
+Pre-heating estimates use the building model averaged over the past 24 hours once
+at least 18 hours of history are available. Until then, they use the current
+model. This applies to the insight, pre-heating recommendation and calculation
+Flow card.
+
 ## Installation
 
 1. Install the app from the Homey App Store.
@@ -101,6 +113,7 @@ The following pages are available for both drivers:
   with supported write controls
 - `/changelog` — an overview per datapoint or register, with current and previous
   values and change statistics
+- `/processchema` — the refrigerant cycle, water circuit and available live measurements
 
 Tuya Expert supports searches by DPS number, name, unit, value and capability.
 It offers views by DPS number, function and unit, plus a writable-only filter.

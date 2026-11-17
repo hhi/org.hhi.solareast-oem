@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file -- the test doubles for the services under test live in this file */
 /**
  * Display text of the hp_cop_method capability, shared by the Tuya and Modbus drivers.
  *

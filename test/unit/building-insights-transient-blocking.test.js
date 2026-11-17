@@ -2,7 +2,7 @@
  * v3.4.3: transient blocking reasons (no COP, defrost, hot water, aux heating) are shown in
  * building insights only once they persist (6 consecutive blocked cycles = 30 min). Reasons
  * that need user action (missing source, learning disabled) are shown immediately.
- * Runs against the compiled building model and insights services of all three drivers.
+ * Runs against the compiled building model and insights services of both OEM drivers.
  */
 
 'use strict';
@@ -89,7 +89,7 @@ function createInsightsService(driver) {
   };
   return new BuildingInsightsService({
     device,
-    buildingModelService: { getLearner: () => ({ getModel: () => model }) },
+    buildingModelService: { getLearner: () => ({ getModel: () => model }), getPreHeatModel: () => model },
     adaptiveControlService: { hasDynamicPricing: () => false },
     logger: () => {},
   });

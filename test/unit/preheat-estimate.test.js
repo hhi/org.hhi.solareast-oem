@@ -78,7 +78,11 @@ test('a larger rise never gives a shorter time', () => {
   const cases = [];
   for (const UA of [0.15, 0.3, 0.6]) {
     for (const outdoorTemp of [-5, 5, 12]) {
-      for (const maxHeatingPowerKw of [3, 6, 10]) cases.push({ ...CONDITIONS, UA, outdoorTemp, maxHeatingPowerKw });
+      for (const maxHeatingPowerKw of [3, 6, 10]) {
+        cases.push({
+          ...CONDITIONS, UA, outdoorTemp, maxHeatingPowerKw,
+        });
+      }
     }
   }
   for (const c of cases) {
@@ -188,7 +192,9 @@ function mockDevice(store, outdoor = 5) {
     },
     getSetting: (key) => settings[key] ?? null,
     getStoreValue: async (key) => store[key] ?? null,
-    setStoreValue: async (key, value) => { store[key] = value; },
+    setStoreValue: async (key, value) => {
+      store[key] = value;
+    },
     getCapabilityValue: (key) => capabilities[key] ?? null,
     hasCapability: () => false,
     getOutdoorTemperatureWithFallback: () => outdoor,
@@ -236,7 +242,7 @@ for (const [name, Service] of [['Tuya', TuyaBuildingModel], ['BLN-TB', ModbusBui
     const ctx = {
       powerHistory,
       device: mockDevice({}, -2),
-      learner: { getModel: () => ({ UA: 0.25, pInt: 0.4 }) },
+      getPreHeatModel: () => ({ C: 15, UA: 0.25, pInt: 0.4 }), // G19: the model averaged over the past day
     };
     assert.deepStrictEqual(Service.prototype.getPreHeatConditions.call(ctx), {
       UA: 0.25, pInt: 0.4, outdoorTemp: -2, maxHeatingPowerKw: 7,

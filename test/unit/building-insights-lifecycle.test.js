@@ -1,6 +1,6 @@
 /**
  * Timer lifecycle of BuildingInsightsService (ADR-062 A7, review addendum A7).
- * Runs against the compiled insights service of all three drivers.
+ * Runs against the compiled insights service of both OEM drivers.
  */
 
 'use strict';
@@ -28,7 +28,9 @@ function createService(driver) {
         active.add(handle);
         return handle;
       },
-      clearInterval: (handle) => { active.delete(handle); },
+      clearInterval: (handle) => {
+        active.delete(handle);
+      },
     },
     getSetting: (key) => settings[key],
   };
