@@ -1517,7 +1517,7 @@ class MyApp extends App {
       logger: (msg, ...args) => this.logger.info(String(msg), ...args),
       port: this._dashboardPort,
     });
-    this._dashboard.start();
+    await this._dashboard.start();
   }
 }
 
